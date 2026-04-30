@@ -241,17 +241,26 @@
 	});
 
 	// Route guard: redirect away from sections hidden at the current usage level.
+	let lastWarnedPath = $state<string | null>(null);
+
 	$effect(() => {
-		if (!$isAuthenticated) return;
-		if ($settingsStore === null) return; // settings not loaded yet
+		if (!$isAuthenticated) {
+			lastWarnedPath = null;
+			return;
+		}
+		if ($settingsStore === null) return;
 		const path = $page.url.pathname;
 		const section = pathToSection(path);
-		if (!section) return; // unknown path — let SvelteKit handle
-		if (isSectionVisible($usageLevel, section)) return;
+		if (!section || isSectionVisible($usageLevel, section)) {
+			lastWarnedPath = null;
+			return;
+		}
+		if (lastWarnedPath === path) return;
+		lastWarnedPath = path;
 
 		notifications.warning(
 			`Раздел «${SECTION_LABELS[section]}» недоступен в режиме «${USAGE_LEVEL_LABELS[$usageLevel]}». Изменить уровень в Настройках.`,
-			{ action: { label: 'Настройки', href: '/settings' }, duration: 8000 },
+			{ action: { label: 'Настройки', href: '/settings' } },
 		);
 		void goto('/', { replaceState: true });
 	});
