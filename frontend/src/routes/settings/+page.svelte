@@ -348,6 +348,7 @@
 					</div>
 				{/if}
 
+				{#if $usageLevel === "expert"}
 				<div class="card">
 					<div class="section-label">Расширенные</div>
 					<div class="setting-row">
@@ -371,6 +372,7 @@
 						</div>
 					</div>
 				</div>
+				{/if}
 			</main>
 		</div>
 
