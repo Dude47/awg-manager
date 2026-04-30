@@ -2,6 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import type { Snippet } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { theme } from '$lib/stores/theme';
 	import { auth, isAuthenticated, isLoading } from '$lib/stores/auth';
 	import { notifications } from '$lib/stores/notifications';
@@ -20,7 +22,13 @@
 	import { singboxRouter } from '$lib/stores/singboxRouter';
 	import { invalidateResource, invalidateAll } from '$lib/stores/storeRegistry';
 	import { setDeviceProxyMissingTarget, clearDeviceProxyMissingTarget } from '$lib/stores/deviceproxy';
-	import { settings as settingsStore, reloadSettings } from '$lib/stores/settings';
+	import { settings as settingsStore, reloadSettings, usageLevel } from '$lib/stores/settings';
+	import {
+		isSectionVisible,
+		pathToSection,
+		SECTION_LABELS,
+		USAGE_LEVEL_LABELS,
+	} from '$lib/types/usageLevel';
 	import type { UpdateInfo } from '$lib/types';
 	import LoginForm from '$lib/components/LoginForm.svelte';
 	import { Modal } from '$lib/components/ui';
@@ -230,6 +238,22 @@
 		if ($isAuthenticated && get(settingsStore) === null) {
 			void reloadSettings();
 		}
+	});
+
+	// Route guard: redirect away from sections hidden at the current usage level.
+	$effect(() => {
+		if (!$isAuthenticated) return;
+		if ($settingsStore === null) return; // settings not loaded yet
+		const path = $page.url.pathname;
+		const section = pathToSection(path);
+		if (!section) return; // unknown path — let SvelteKit handle
+		if (isSectionVisible($usageLevel, section)) return;
+
+		notifications.warning(
+			`Раздел «${SECTION_LABELS[section]}» недоступен в режиме «${USAGE_LEVEL_LABELS[$usageLevel]}». Изменить уровень в Настройках.`,
+			{ action: { label: 'Настройки', href: '/settings' }, duration: 8000 },
+		);
+		void goto('/', { replaceState: true });
 	});
 
 	onMount(async () => {
