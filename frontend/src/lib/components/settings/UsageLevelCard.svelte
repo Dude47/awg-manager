@@ -170,6 +170,8 @@
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
+		min-width: 0;
+		gap: 0.5rem;
 		background: transparent;
 		border: 0;
 		padding: 0;
@@ -178,6 +180,10 @@
 		font: inherit;
 		cursor: pointer;
 		text-align: left;
+	}
+	.collapsible-header > .section-label {
+		min-width: 0;
+		flex-shrink: 1;
 	}
 	.collapsible-header:focus-visible {
 		outline: 2px solid var(--color-accent);
@@ -193,6 +199,10 @@
 	}
 	.current-level {
 		color: var(--color-text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 8rem;
 	}
 	.chevron {
 		width: 14px;

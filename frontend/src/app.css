@@ -200,6 +200,11 @@ html, body {
   line-height: 1.5;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
+  overflow-x: hidden;
+}
+
+.setting-description {
+  overflow-wrap: anywhere;
 }
 
 #app {

@@ -479,11 +479,14 @@
 		display: inline-flex;
 		gap: 0.5rem;
 		align-items: center;
-		flex-shrink: 0;
+		flex-shrink: 1;
+		min-width: 0;
+		flex-wrap: wrap;
 	}
 
 	.api-key-input {
 		width: 22rem;
+		min-width: 0;
 		max-width: 100%;
 		padding: 0.375rem 0.5rem;
 		font-family: var(--font-mono, ui-monospace, monospace);
