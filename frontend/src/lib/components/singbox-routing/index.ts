@@ -3,3 +3,4 @@ export { default as JsonConfigDrawer } from './JsonConfigDrawer.svelte';
 export { default as EngineSubTab } from './EngineSubTab.svelte';
 export { default as RulesSubTab } from './RulesSubTab.svelte';
 export { default as RuleSetsSubTab } from './RuleSetsSubTab.svelte';
+export { default as DnsSubTab } from './DnsSubTab.svelte';

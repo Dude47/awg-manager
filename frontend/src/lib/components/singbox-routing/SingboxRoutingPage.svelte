@@ -8,6 +8,7 @@
 	import EngineSubTab from './EngineSubTab.svelte';
 	import RulesSubTab from './RulesSubTab.svelte';
 	import RuleSetsSubTab from './RuleSetsSubTab.svelte';
+	import DnsSubTab from './DnsSubTab.svelte';
 
 	type SubTab = 'engine' | 'rules' | 'rulesets' | 'dns' | 'deviceproxy';
 
@@ -80,7 +81,7 @@
 	{:else if active === 'rulesets'}
 		<RuleSetsSubTab />
 	{:else if active === 'dns'}
-		<div class="placeholder">DNS — будет в следующей задаче</div>
+		<DnsSubTab />
 	{:else if active === 'deviceproxy'}
 		<div class="placeholder">Прокси — будет в следующей задаче</div>
 	{/if}
