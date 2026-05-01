@@ -8,17 +8,19 @@
 	import EngineSubTab from './EngineSubTab.svelte';
 	import RulesSubTab from './RulesSubTab.svelte';
 	import RuleSetsSubTab from './RuleSetsSubTab.svelte';
+	import OutboundsSubTab from './OutboundsSubTab.svelte';
 	import DnsSubTab from './DnsSubTab.svelte';
 	import DeviceProxySubTab from './DeviceProxySubTab.svelte';
 
-	type SubTab = 'engine' | 'rules' | 'rulesets' | 'dns' | 'deviceproxy';
+	type SubTab = 'engine' | 'rules' | 'rulesets' | 'outbounds' | 'dns' | 'deviceproxy';
 
-	const order: SubTab[] = ['engine', 'rules', 'rulesets', 'dns', 'deviceproxy'];
+	const order: SubTab[] = ['engine', 'rules', 'rulesets', 'outbounds', 'dns', 'deviceproxy'];
 
 	const labels: Record<SubTab, string> = {
 		engine: 'Движок',
 		rules: 'Правила',
 		rulesets: 'Наборы',
+		outbounds: 'Outbounds',
 		dns: 'DNS',
 		deviceproxy: 'Прокси'
 	};
@@ -81,6 +83,8 @@
 		<RulesSubTab />
 	{:else if active === 'rulesets'}
 		<RuleSetsSubTab />
+	{:else if active === 'outbounds'}
+		<OutboundsSubTab />
 	{:else if active === 'dns'}
 		<DnsSubTab />
 	{:else if active === 'deviceproxy'}
