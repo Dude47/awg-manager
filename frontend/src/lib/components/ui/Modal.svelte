@@ -150,8 +150,22 @@
     .modal-body {
         padding: 1rem;
         overflow-y: auto;
+        overflow-x: hidden;
         flex: 1;
         min-height: 0;
+        min-width: 0;
+    }
+
+    /* Defensive: ensure form controls inside any modal never push the body
+       wider than the card. Inputs/textareas/selects with width:100% +
+       box-sizing:border-box should already fit, but min-width:auto on grid
+       items can leak intrinsic widths through. */
+    .modal-body :global(input),
+    .modal-body :global(textarea),
+    .modal-body :global(select) {
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
     }
 
     .modal-footer {
