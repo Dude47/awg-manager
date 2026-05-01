@@ -9,6 +9,7 @@
 	import RulesSubTab from './RulesSubTab.svelte';
 	import RuleSetsSubTab from './RuleSetsSubTab.svelte';
 	import DnsSubTab from './DnsSubTab.svelte';
+	import DeviceProxySubTab from './DeviceProxySubTab.svelte';
 
 	type SubTab = 'engine' | 'rules' | 'rulesets' | 'dns' | 'deviceproxy';
 
@@ -83,7 +84,7 @@
 	{:else if active === 'dns'}
 		<DnsSubTab />
 	{:else if active === 'deviceproxy'}
-		<div class="placeholder">Прокси — будет в следующей задаче</div>
+		<DeviceProxySubTab />
 	{/if}
 </section>
 
@@ -123,12 +124,5 @@
 	}
 	.sub-content {
 		margin-top: 1rem;
-	}
-	.placeholder {
-		padding: 2rem;
-		text-align: center;
-		color: var(--color-text-secondary);
-		border: 1px dashed var(--color-border);
-		border-radius: var(--radius-sm);
 	}
 </style>
