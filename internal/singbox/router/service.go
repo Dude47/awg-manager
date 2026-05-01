@@ -381,20 +381,26 @@ func ensureTProxyInbound(in []Inbound) []Inbound {
 		// the SKeen reference setup: both TCP and UDP get fast-open /
 		// fragment-handling, UDP timeout extended to 3m so long-lived
 		// flows (video calls, gaming) survive idle gaps.
-		changed := false
 		if !in[i].TCPFastOpen {
 			in[i].TCPFastOpen = true
-			changed = true
 		}
 		if !in[i].UDPFragment {
 			in[i].UDPFragment = true
-			changed = true
 		}
 		if in[i].UDPTimeout == "" {
 			in[i].UDPTimeout = "3m0s"
-			changed = true
 		}
-		_ = changed
+		// Strip RoutingMark on existing inbounds — older versions set
+		// it to Fwmark (0x1), which made sing-box mark its reply-path
+		// packets with the same mark our `ip rule fwmark 0x1` routes
+		// to table 100 (local default dev lo). That bounced reply
+		// packets onto loopback instead of the LAN bridge, causing
+		// ERR_CONNECTION_RESET on clients. SKeen reference setup
+		// never sets routing_mark on the tproxy inbound for this
+		// exact reason.
+		if in[i].RoutingMark != 0 {
+			in[i].RoutingMark = 0
+		}
 		return in
 	}
 	return append([]Inbound{{
@@ -405,7 +411,6 @@ func ensureTProxyInbound(in []Inbound) []Inbound {
 		TCPFastOpen: true,
 		UDPFragment: true,
 		UDPTimeout:  "3m0s",
-		RoutingMark: Fwmark,
 	}}, in...)
 }
 
