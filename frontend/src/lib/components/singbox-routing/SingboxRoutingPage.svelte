@@ -5,6 +5,7 @@
 	import { Tabs, Button } from '$lib/components/ui';
 	import { singboxStatus } from '$lib/stores/singbox';
 	import JsonConfigDrawer from './JsonConfigDrawer.svelte';
+	import EngineSubTab from './EngineSubTab.svelte';
 
 	type SubTab = 'engine' | 'rules' | 'rulesets' | 'dns' | 'deviceproxy';
 
@@ -71,7 +72,7 @@
 
 <section class="sub-content">
 	{#if active === 'engine'}
-		<div class="placeholder">Движок — будет в следующей задаче</div>
+		<EngineSubTab />
 	{:else if active === 'rules'}
 		<div class="placeholder">Правила — будут в следующей задаче</div>
 	{:else if active === 'rulesets'}
