@@ -1,18 +1,18 @@
 package orchestrator
 
 import (
-	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
-// ProcessController is the subset of sing-box.Process that orchestrator
-// uses to manage lifecycle and reload. Full Process satisfies it.
+// ProcessController is the subset of sing-box.Process the orchestrator
+// uses. The real *singbox.Process satisfies it.
 type ProcessController interface {
-	IsRunning() (bool, error)
-	Start(ctx context.Context) error
-	Stop(ctx context.Context) error
-	Reload() error // SIGHUP to running process
+	IsRunning() (bool, int) // (running, pid)
+	Start() error
+	Stop() error
+	Reload() error
 }
 
 // Orchestrator is the single writer for sing-box config.d. See package
@@ -29,6 +29,33 @@ type Orchestrator struct {
 	// reload. Task 4 wires this into a debounced reloader. For now Save
 	// / SetEnabled just flip it.
 	dirty bool
+
+	// logf, if non-nil, receives short human-readable messages about
+	// reload outcomes (validation errors, lifecycle transitions). Set
+	// by SetLogger; nil = silent.
+	logf func(level string, msg string)
+
+	// For T4 reload coalescing.
+	reloadTimer *time.Timer
+	reloading   bool
+}
+
+// SetLogger registers a sink for orchestrator-level log lines.
+// level is one of "info", "warn", "error".
+func (o *Orchestrator) SetLogger(fn func(level string, msg string)) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.logf = fn
+}
+
+// log emits via logf if set. Caller may or may not hold the lock.
+func (o *Orchestrator) log(level, msg string) {
+	o.mu.Lock()
+	fn := o.logf
+	o.mu.Unlock()
+	if fn != nil {
+		fn(level, msg)
+	}
 }
 
 // New constructs an orchestrator rooted at configDir (typically
@@ -120,6 +147,7 @@ func (o *Orchestrator) Save(slot Slot, jsonBytes []byte) error {
 		return fmt.Errorf("save %s: %w", slot, err)
 	}
 	o.dirty = true
+	o.scheduleReload()
 	return nil
 }
 
@@ -144,6 +172,7 @@ func (o *Orchestrator) SetEnabled(slot Slot, enabled bool) error {
 	}
 	o.enabled[slot] = enabled
 	o.dirty = true
+	o.scheduleReload()
 	return nil
 }
 
@@ -175,7 +204,3 @@ func (o *Orchestrator) Snapshot() []SlotState {
 	return out
 }
 
-// Reload — implemented in Task 4.
-func (o *Orchestrator) Reload() error {
-	return nil
-}

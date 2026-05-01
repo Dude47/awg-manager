@@ -3,7 +3,9 @@ package orchestrator
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func newTestOrch(t *testing.T) (*Orchestrator, string) {
@@ -134,6 +136,171 @@ func TestSaveUnknownSlot(t *testing.T) {
 	o, _ := newTestOrch(t)
 	if err := o.Save(SlotRouter, []byte(`{}`)); err != ErrUnknownSlot {
 		t.Errorf("expected ErrUnknownSlot, got %v", err)
+	}
+}
+
+// fakeProc records lifecycle calls for tests.
+type fakeProc struct {
+	mu       sync.Mutex
+	running  bool
+	starts   int
+	stops    int
+	reloads  int
+	startErr error
+}
+
+func (p *fakeProc) IsRunning() (bool, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.running {
+		return true, 12345
+	}
+	return false, 0
+}
+func (p *fakeProc) Start() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.starts++
+	if p.startErr != nil {
+		return p.startErr
+	}
+	p.running = true
+	return nil
+}
+func (p *fakeProc) Stop() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stops++
+	p.running = false
+	return nil
+}
+func (p *fakeProc) Reload() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.reloads++
+	return nil
+}
+
+func TestReloadStartsWhenSlotEnabled(t *testing.T) {
+	fp := &fakeProc{}
+	dir := t.TempDir()
+	o := New(dir, fp)
+	_ = o.Register(SlotMeta{Slot: SlotBase, Filename: "00-base.json", AlwaysOn: true})
+	_ = o.Register(SlotMeta{Slot: SlotRouter, Filename: "20-router.json"})
+	if err := o.Bootstrap(); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Save(SlotBase, []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Save(SlotRouter, []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.SetEnabled(SlotRouter, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Reload(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if fp.starts != 1 || fp.reloads != 0 {
+		t.Errorf("expected 1 start, 0 reloads; got starts=%d reloads=%d", fp.starts, fp.reloads)
+	}
+}
+
+func TestReloadStopsWhenAllDisabled(t *testing.T) {
+	fp := &fakeProc{running: true} // pretend already running
+	dir := t.TempDir()
+	o := New(dir, fp)
+	_ = o.Register(SlotMeta{Slot: SlotBase, Filename: "00-base.json", AlwaysOn: true})
+	_ = o.Register(SlotMeta{Slot: SlotRouter, Filename: "20-router.json"})
+	if err := o.Bootstrap(); err != nil {
+		t.Fatal(err)
+	}
+	// base is AlwaysOn, router is disabled. hasActiveWork = false.
+	if err := o.Reload(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if fp.stops != 1 {
+		t.Errorf("expected 1 stop, got %d", fp.stops)
+	}
+}
+
+func TestReloadSighupsWhenAlreadyRunning(t *testing.T) {
+	fp := &fakeProc{running: true}
+	dir := t.TempDir()
+	o := New(dir, fp)
+	_ = o.Register(SlotMeta{Slot: SlotRouter, Filename: "20-router.json"})
+	if err := o.Bootstrap(); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Save(SlotRouter, []byte(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.SetEnabled(SlotRouter, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if fp.reloads != 1 || fp.starts != 0 {
+		t.Errorf("expected 1 reload, 0 starts; got reloads=%d starts=%d", fp.reloads, fp.starts)
+	}
+}
+
+func TestReloadSkippedOnValidationError(t *testing.T) {
+	fp := &fakeProc{}
+	dir := t.TempDir()
+	o := New(dir, fp)
+	_ = o.Register(SlotMeta{Slot: SlotRouter, Filename: "20-router.json"})
+	if err := o.Bootstrap(); err != nil {
+		t.Fatal(err)
+	}
+	// Write a config with a dangling outbound reference.
+	if err := o.Save(SlotRouter, []byte(`{"route":{"rules":[{"outbound":"ghost"}]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.SetEnabled(SlotRouter, true); err != nil {
+		t.Fatal(err)
+	}
+	err := o.Reload()
+	if err == nil {
+		t.Errorf("expected validation error from Reload")
+	}
+	if fp.starts != 0 || fp.reloads != 0 || fp.stops != 0 {
+		t.Errorf("no process action expected on invalid config; got %+v", fp)
+	}
+}
+
+func TestDebouncerCoalescesMultipleSaves(t *testing.T) {
+	fp := &fakeProc{running: true}
+	dir := t.TempDir()
+	o := New(dir, fp)
+	_ = o.Register(SlotMeta{Slot: SlotRouter, Filename: "20-router.json"})
+	if err := o.Bootstrap(); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.SetEnabled(SlotRouter, true); err != nil {
+		t.Fatal(err)
+	}
+	// Three rapid saves within the debounce window.
+	for i := 0; i < 3; i++ {
+		if err := o.Save(SlotRouter, []byte(`{}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Wait past debounce.
+	time.Sleep(reloadDebounce + 100*time.Millisecond)
+	fp.mu.Lock()
+	reloads := fp.reloads
+	starts := fp.starts
+	fp.mu.Unlock()
+	if reloads+starts > 2 {
+		// SetEnabled fires once; the 3 saves coalesce into at most one
+		// additional reload. Tolerate <=2 total.
+		t.Errorf("debouncer didn't coalesce; reloads=%d starts=%d", reloads, starts)
+	}
+	if reloads+starts == 0 {
+		t.Errorf("expected at least one reload to fire")
 	}
 }
 
