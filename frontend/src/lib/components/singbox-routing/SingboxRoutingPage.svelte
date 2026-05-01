@@ -7,6 +7,7 @@
 	import JsonConfigDrawer from './JsonConfigDrawer.svelte';
 	import EngineSubTab from './EngineSubTab.svelte';
 	import RulesSubTab from './RulesSubTab.svelte';
+	import RuleSetsSubTab from './RuleSetsSubTab.svelte';
 
 	type SubTab = 'engine' | 'rules' | 'rulesets' | 'dns' | 'deviceproxy';
 
@@ -77,7 +78,7 @@
 	{:else if active === 'rules'}
 		<RulesSubTab />
 	{:else if active === 'rulesets'}
-		<div class="placeholder">Наборы — будут в следующей задаче</div>
+		<RuleSetsSubTab />
 	{:else if active === 'dns'}
 		<div class="placeholder">DNS — будет в следующей задаче</div>
 	{:else if active === 'deviceproxy'}
