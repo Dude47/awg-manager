@@ -113,7 +113,9 @@ func newAwgoutboundsSingboxAdapter(op *singbox.Operator) *awgoutboundsSingboxAda
 }
 
 func (a *awgoutboundsSingboxAdapter) ConfigDir() string { return a.op.ConfigDir() }
-func (a *awgoutboundsSingboxAdapter) Reload() error      { return a.op.Reload() }
+func (a *awgoutboundsSingboxAdapter) Reload() error {
+	return a.op.Process().Reload()
+}
 
 // deviceproxyAWGOutboundsAdapter projects awgoutbounds.TagInfo into
 // deviceproxy.AWGTagInfo. main.go owns this projection so neither

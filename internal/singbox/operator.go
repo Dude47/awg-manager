@@ -72,18 +72,6 @@ type Operator struct {
 	lastErrorMu sync.RWMutex
 	lastError   string
 
-	// reloadFn is the underlying SIGHUP function; defaults to o.proc.Reload.
-	// Tests inject a closure to bypass real signal delivery.
-	reloadFn func() error
-
-	// Reload coalescing — see Reload() comment for the contract.
-	reloadMu       sync.Mutex
-	reloadTimer    *time.Timer
-	reloadFirstAt  time.Time
-	reloadPending  bool
-	reloadLastErr  error
-	reloadDoneChan chan struct{}
-
 	// orch is the config.d orchestrator. When non-nil, ApplyConfig
 	// writes 10-tunnels.json through the orchestrator's slot writer
 	// (which handles validate + debounced reload). Wired post-construction
@@ -143,8 +131,6 @@ func NewOperator(d OperatorDeps) *Operator {
 	op.proc.OnStderrLine = op.handleStderrLine
 	op.proc.OnStdoutLine = op.handleStdoutLine
 	op.proc.OnExit = op.handleExit
-	op.reloadFn = op.proc.Reload
-	op.reloadDoneChan = make(chan struct{})
 	return op
 }
 
@@ -348,111 +334,17 @@ func (o *Operator) ValidateConfigDir(ctx context.Context) error {
 	return o.validator.Validate(o.configPath)
 }
 
-const (
-	reloadDebounce = 200 * time.Millisecond
-	reloadMaxWait  = 500 * time.Millisecond
-)
-
-// Reload schedules a coalesced sing-box config reload (SIGHUP).
-//
-// Behavior:
-//   - Returns nil immediately; the actual reload happens after a
-//     trailing-debounce window (reloadDebounce) — successive calls
-//     within the window reset the timer so a burst of writers
-//     produces a single SIGHUP.
-//   - If the burst keeps going past reloadMaxWait from the first call
-//     in the burst, the existing scheduled reload fires anyway
-//     (starvation guard).
-//   - Errors from the underlying SIGHUP are stored in reloadLastErr
-//     and reachable via ReloadAndWait. Production callers ignore them
-//     here and rely on Status.LastError populated by Process.OnExit.
-func (o *Operator) Reload() error {
-	o.reloadMu.Lock()
-	defer o.reloadMu.Unlock()
-
-	now := time.Now()
-	if !o.reloadPending {
-		o.reloadFirstAt = now
-		o.reloadPending = true
-		// Lazy-init for zero-value test structs that bypass NewOperator;
-		// production paths always have it pre-initialised.
-		if o.reloadDoneChan == nil {
-			o.reloadDoneChan = make(chan struct{})
-		}
-	}
-
-	// Past max-wait — let the already-scheduled timer fire on schedule.
-	if now.Sub(o.reloadFirstAt) >= reloadMaxWait {
-		return nil
-	}
-
-	if o.reloadTimer != nil {
-		o.reloadTimer.Stop()
-	}
-
-	delay := reloadDebounce
-	if remaining := reloadMaxWait - now.Sub(o.reloadFirstAt); remaining < delay {
-		delay = remaining
-	}
-	o.reloadTimer = time.AfterFunc(delay, o.fireReload)
-	return nil
-}
-
-func (o *Operator) fireReload() {
-	o.reloadMu.Lock()
-	o.reloadPending = false
-	o.reloadFirstAt = time.Time{}
-	done := o.reloadDoneChan
-	o.reloadDoneChan = make(chan struct{})
-	fn := o.reloadFn
-	o.reloadMu.Unlock()
-
-	if fn == nil {
-		fn = o.proc.Reload
-	}
-	err := fn()
-
-	o.reloadMu.Lock()
-	o.reloadLastErr = err
-	o.reloadMu.Unlock()
-
-	close(done)
-}
-
-// ReloadAndWait blocks until the next reload (already-scheduled or
-// freshly-triggered) completes, returning that reload's error. Used
-// by tests and the rare blocking caller that must observe the result.
-func (o *Operator) ReloadAndWait(ctx context.Context) error {
-	o.reloadMu.Lock()
-	if !o.reloadPending {
-		o.reloadMu.Unlock()
-		fn := o.reloadFn
-		if fn == nil {
-			fn = o.proc.Reload
-		}
-		err := fn()
-		o.reloadMu.Lock()
-		o.reloadLastErr = err
-		o.reloadMu.Unlock()
-		return err
-	}
-	done := o.reloadDoneChan
-	o.reloadMu.Unlock()
-
-	select {
-	case <-done:
-		o.reloadMu.Lock()
-		err := o.reloadLastErr
-		o.reloadMu.Unlock()
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
 // IsRunning reports whether the sing-box process is alive (and its PID).
 // Public version of o.proc.IsRunning for cross-package callers.
 func (o *Operator) IsRunning() (bool, int) { return o.proc.IsRunning() }
+
+// Reload sends SIGHUP to the sing-box process directly, bypassing any
+// debouncing. Production callers go through the orchestrator's
+// debounced reload (250ms in internal/singbox/orchestrator/reload.go);
+// this passthrough exists for legacy fallback paths and the
+// SingboxController contract (router uses it when Orch is unwired in
+// tests, and the scheduler / RefreshRuleSet call it directly).
+func (o *Operator) Reload() error { return o.proc.Reload() }
 
 // Start cold-starts sing-box after validating the config.d. Public
 // version of the internal startAndWait — used by router.Service.Enable
