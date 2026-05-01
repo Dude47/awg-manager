@@ -18,6 +18,12 @@ const (
 	Fwmark       = 0x1
 	RoutingTable = 100
 	ChainName    = "AWGM-TPROXY"
+	// IPRulePriority is the fixed `ip rule` priority for our fwmark rule.
+	// Above NDMS policy rules (~100-200) and below system main/default
+	// (32766/32767). Hard-coded so Install is fully idempotent and so
+	// our rule never accidentally displaces the kernel's local-table
+	// rule at priority 0.
+	IPRulePriority = 30000
 )
 
 // Mutable in tests via t.Cleanup so they can redirect into a tmp dir.
@@ -196,8 +202,26 @@ func (it *IPTables) Install(ctx context.Context, mark string) error {
 	if err := it.restoreNoflush(ctx, input); err != nil {
 		return fmt.Errorf("iptables-restore: %w", err)
 	}
+	// Drain ALL existing fwmark rules pointing at our table before
+	// adding a fresh one. Without this, every Install (Reconcile,
+	// daemon restart, mark-change, re-Enable) leaves a duplicate
+	// because `ip rule add` without explicit priority lands at
+	// previous_priority + 1 instead of being deduped — and a stack of
+	// rules at priorities 0-N displaces the kernel's `from all lookup
+	// local` rule (normally at prio 0), breaking router-local routing
+	// (sing-box outbounds to direct silently fail).
+	for {
+		if err := it.runIP(ctx, "rule", "del", "fwmark", fmt.Sprintf("0x%x", Fwmark),
+			"table", fmt.Sprintf("%d", RoutingTable)); err != nil {
+			break
+		}
+	}
+	// Use an explicit priority well above NDMS policy rules (100-200)
+	// and well below the system main/default tables (32766/32767), so
+	// our rule is identifiable and idempotent.
 	if err := it.runIP(ctx, "rule", "add", "fwmark", fmt.Sprintf("0x%x", Fwmark),
-		"table", fmt.Sprintf("%d", RoutingTable)); err != nil {
+		"table", fmt.Sprintf("%d", RoutingTable),
+		"priority", fmt.Sprintf("%d", IPRulePriority)); err != nil {
 		if !strings.Contains(err.Error(), "File exists") {
 			return fmt.Errorf("ip rule add: %w", err)
 		}
@@ -229,11 +253,11 @@ func writeNetfilterHook() error {
 pidof sing-box >/dev/null 2>&1 || exit 0
 if ! /opt/sbin/iptables -w -t mangle -nL %[2]s >/dev/null 2>&1; then
   /opt/sbin/iptables-restore --noflush < %[1]q
-  /opt/sbin/ip rule add fwmark 0x%[3]x table %[4]d 2>/dev/null || true
+  /opt/sbin/ip rule add fwmark 0x%[3]x table %[4]d priority %[5]d 2>/dev/null || true
   /opt/sbin/ip route add local 0.0.0.0/0 dev lo table %[4]d 2>/dev/null || true
   logger -t awgm-tproxy "netfilter.d: restored AWGM-TPROXY chain after NDMS reload"
 fi
-`, netfilterRulesPath, ChainName, Fwmark, RoutingTable)
+`, netfilterRulesPath, ChainName, Fwmark, RoutingTable, IPRulePriority)
 	return os.WriteFile(netfilterHookPath, []byte(script), 0755)
 }
 
@@ -268,8 +292,15 @@ func (it *IPTables) Uninstall(ctx context.Context) error {
 	it.removeSourceHooks(ctx)
 	_ = it.runIPTables(ctx, "-t", "mangle", "-F", ChainName)
 	_ = it.runIPTables(ctx, "-t", "mangle", "-X", ChainName)
-	_ = it.runIP(ctx, "rule", "del", "fwmark", fmt.Sprintf("0x%x", Fwmark),
-		"table", fmt.Sprintf("%d", RoutingTable))
+	// Drain ALL fwmark rules — historically Install accumulated
+	// duplicates at priorities 0-N (auto-assigned), so a single `del`
+	// would leave the rest. Loop until ENOENT.
+	for {
+		if err := it.runIP(ctx, "rule", "del", "fwmark", fmt.Sprintf("0x%x", Fwmark),
+			"table", fmt.Sprintf("%d", RoutingTable)); err != nil {
+			break
+		}
+	}
 	_ = it.runIP(ctx, "route", "flush", "table", fmt.Sprintf("%d", RoutingTable))
 	return nil
 }
