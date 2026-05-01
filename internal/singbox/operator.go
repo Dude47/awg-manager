@@ -263,17 +263,61 @@ func (o *Operator) tunnelsFile() string {
 
 // ensureBaseConfig writes a minimal 00-base.json if config.d is empty,
 // so sing-box starts standalone (direct outbound + bootstrap DNS) before
-// any tunnels are added.
+// any tunnels are added. Also surgically self-heals an older base config
+// that hard-coded the wrong Clash API port (9090 instead of
+// clashAPIAddr's 9099), which silently broke our LogForwarder /
+// DelayChecker on existing installs.
 func ensureBaseConfig(configDir string) {
 	basePath := filepath.Join(configDir, "00-base.json")
 	if _, err := os.Stat(basePath); err == nil {
+		patchBaseClashPort(basePath)
 		return
 	}
 	_ = os.MkdirAll(configDir, 0755)
-	base := map[string]any{
+	_ = writeJSONFile(basePath, freshBaseConfig())
+}
+
+// patchBaseClashPort rewrites only the experimental.clash_api.external_controller
+// field if it points anywhere other than clashAPIAddr. Other fields
+// (user customizations: log level, DNS servers, etc.) are preserved
+// verbatim. No-op when the file already has the correct port or has no
+// experimental.clash_api block at all (latter case: the user removed
+// clash_api on purpose; respect that).
+func patchBaseClashPort(basePath string) {
+	data, err := os.ReadFile(basePath)
+	if err != nil {
+		return
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return
+	}
+	exp, _ := m["experimental"].(map[string]any)
+	if exp == nil {
+		return
+	}
+	clash, _ := exp["clash_api"].(map[string]any)
+	if clash == nil {
+		return
+	}
+	current, _ := clash["external_controller"].(string)
+	if current == clashAPIAddr {
+		return
+	}
+	clash["external_controller"] = clashAPIAddr
+	_ = writeJSONFile(basePath, m)
+}
+
+// freshBaseConfig returns the canonical base sing-box config. Single
+// source of truth for ensureBaseConfig (initial write + self-heal path).
+func freshBaseConfig() map[string]any {
+	return map[string]any{
 		"log": map[string]any{"level": "trace", "timestamp": true},
 		"experimental": map[string]any{
-			"clash_api":  map[string]any{"external_controller": "127.0.0.1:9090"},
+			// MUST match clashAPIAddr — our ClashClient and LogForwarder
+			// connect here. Hard-coding 9090 (sing-box default) used to
+			// silently break log forwarding on existing installs.
+			"clash_api":  map[string]any{"external_controller": clashAPIAddr},
 			"cache_file": map[string]any{"enabled": true, "path": "cache.db"},
 		},
 		"dns": map[string]any{
@@ -291,7 +335,6 @@ func ensureBaseConfig(configDir string) {
 			"default_domain_resolver": "dns-bootstrap",
 		},
 	}
-	_ = writeJSONFile(basePath, base)
 }
 
 // ConfigDir returns the config.d directory path (used by sing-box-router
