@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hoaxisr/awg-manager/internal/events"
+	"github.com/hoaxisr/awg-manager/internal/logging"
 	"github.com/hoaxisr/awg-manager/internal/ndms/command"
 	"github.com/hoaxisr/awg-manager/internal/ndms/query"
 	"github.com/hoaxisr/awg-manager/internal/sys/ndmsinfo"
@@ -57,6 +58,13 @@ type Operator struct {
 	clash     *ClashClient
 	bus       *events.Bus
 
+	// processLogger forwards sing-box stdout/stderr lines into the app
+	// log under singbox/process so users can see daemon output at
+	// /diagnostics?tab=logs without ssh'ing in. nil-safe (ScopedLogger
+	// methods no-op on nil), so zero-value Operator structs in tests
+	// stay usable.
+	processLogger *logging.ScopedLogger
+
 	// lastError holds the last fatal exit reason (stderr tail or wait
 	// error) captured by Process.OnExit. Surfaced via Status.LastError so
 	// the UI can explain crashes without forcing the user to ssh in.
@@ -81,8 +89,12 @@ type OperatorDeps struct {
 	Log      *slog.Logger
 	Queries  *query.Queries
 	Commands *command.Commands
-	Dir      string // optional; defaults to /opt/etc/awg-manager/singbox
-	Binary   string // optional; defaults to "sing-box"
+	// AppLogger surfaces sing-box stdout/stderr in the in-memory app
+	// log buffer (visible at /diagnostics?tab=logs). Optional — when
+	// nil, process output is only mirrored to slog.
+	AppLogger logging.AppLogger
+	Dir       string // optional; defaults to /opt/etc/awg-manager/singbox
+	Binary    string // optional; defaults to "sing-box"
 }
 
 func NewOperator(d OperatorDeps) *Operator {
@@ -109,17 +121,19 @@ func NewOperator(d OperatorDeps) *Operator {
 	ensureBaseConfig(configPath)
 
 	op := &Operator{
-		log:        log,
-		dir:        dir,
-		binary:     binary,
-		configPath: configPath,
-		pidPath:    pidPath,
-		proc:       NewProcess(binary, configPath, pidPath),
-		validator:  NewValidator(binary),
-		proxyMgr:   NewProxyManager(d.Queries, d.Commands),
-		clash:      NewClashClient(clashAPIAddr),
+		log:           log,
+		dir:           dir,
+		binary:        binary,
+		configPath:    configPath,
+		pidPath:       pidPath,
+		proc:          NewProcess(binary, configPath, pidPath),
+		validator:     NewValidator(binary),
+		proxyMgr:      NewProxyManager(d.Queries, d.Commands),
+		clash:         NewClashClient(clashAPIAddr),
+		processLogger: logging.NewScopedLogger(d.AppLogger, logging.GroupSingbox, logging.SubSBProcess),
 	}
 	op.proc.OnStderrLine = op.handleStderrLine
+	op.proc.OnStdoutLine = op.handleStdoutLine
 	op.proc.OnExit = op.handleExit
 	op.reloadFn = op.proc.Reload
 	op.reloadDoneChan = make(chan struct{})
@@ -141,6 +155,40 @@ func (o *Operator) handleStderrLine(line string) {
 		o.log.Warn("singbox stderr", "line", line)
 	default:
 		o.log.Info("singbox stderr", "line", line)
+	}
+}
+
+// handleStdoutLine forwards each sing-box stdout line into the app log
+// under singbox/process. Level chosen by classifyProcessLine.
+func (o *Operator) handleStdoutLine(line string) {
+	if o.processLogger == nil {
+		return
+	}
+	switch classifyProcessLine(line) {
+	case logging.LevelError:
+		o.processLogger.Error("stdout", "", line)
+	case logging.LevelWarn:
+		o.processLogger.Warn("stdout", "", line)
+	default:
+		o.processLogger.Info("stdout", "", line)
+	}
+}
+
+// classifyProcessLine picks a log level from a sing-box stdout/stderr
+// line by simple substring heuristic. Used to surface FATAL/ERROR
+// messages at the right severity in the app log.
+func classifyProcessLine(line string) logging.Level {
+	lower := strings.ToLower(line)
+	switch {
+	case strings.Contains(lower, "panic") ||
+		strings.Contains(lower, "fatal") ||
+		strings.Contains(lower, "error") ||
+		strings.Contains(lower, "failed"):
+		return logging.LevelError
+	case strings.Contains(lower, "warn"):
+		return logging.LevelWarn
+	default:
+		return logging.LevelInfo
 	}
 }
 

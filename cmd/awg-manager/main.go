@@ -566,9 +566,10 @@ func main() {
 
 	// Sing-box integration
 	singboxOp := singbox.NewOperator(singbox.OperatorDeps{
-		Log:      slog.Default().With("component", "singbox"),
-		Queries:  ndmsQueries,
-		Commands: ndmsCommands,
+		Log:       slog.Default().With("component", "singbox"),
+		Queries:   ndmsQueries,
+		Commands:  ndmsCommands,
+		AppLogger: loggingService,
 	})
 	delayChecker := singbox.NewDelayChecker(singboxOp.Clash(), singboxOp, eventBus)
 	singboxHandler := api.NewSingboxHandler(singboxOp, eventBus, delayChecker, testService)
