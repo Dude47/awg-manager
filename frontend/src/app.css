@@ -200,6 +200,11 @@ html, body {
   line-height: 1.5;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
+  overflow-x: hidden;
+}
+
+.setting-description {
+  overflow-wrap: anywhere;
 }
 
 #app {
@@ -417,10 +422,33 @@ label {
 	min-width: 280px;
 	max-width: 400px;
 	animation: slideIn 0.2s ease;
-	cursor: pointer;
 	font: inherit;
 	color: inherit;
 	text-align: left;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.toast-message {
+	flex: 1;
+	background: transparent;
+	border: 0;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+	padding: 0;
+	font: inherit;
+}
+
+.toast-action {
+	color: var(--accent);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.toast-action:hover {
+	text-decoration: underline;
 }
 
 .toast-dismiss-all {
@@ -517,6 +545,12 @@ label {
 	justify-content: space-between;
 	gap: 1rem;
 	padding: 0.875rem 0;
+	flex-wrap: wrap;
+}
+
+.setting-row > *:first-child {
+	min-width: 0;
+	flex: 1 1 0;
 }
 
 .setting-row:first-child {
@@ -934,6 +968,17 @@ label {
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 0.5rem;
+	}
+}
+
+@media (max-width: 640px) {
+	.setting-row {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.5rem;
+	}
+	.setting-row > *:first-child {
+		flex: initial;
 	}
 }
 

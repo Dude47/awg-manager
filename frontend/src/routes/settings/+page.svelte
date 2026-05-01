@@ -12,19 +12,31 @@
 		DnsRouteSettings,
 		IntegrationsCard,
 		SettingsFooter,
+		UsageLevelCard,
 	} from "$lib/components/settings";
+	import { setSettings as setGlobalSettings } from "$lib/stores/settings";
 	import type {
 		SystemInfo,
 		Settings,
 		UpdateInfo,
 		HydraRouteStatus,
 	} from "$lib/types";
+	import {
+		USAGE_LEVEL_LABELS,
+		isSectionVisible,
+		isRoutingSubTabVisible,
+		type UsageLevel,
+	} from "$lib/types/usageLevel";
+	import { usageLevel } from "$lib/stores/settings";
 
 	let systemInfo: SystemInfo | null = $state(null);
 	let settings = $state<Settings | null>(null);
 	let loading = $state(true);
 	let saving = $state(false);
 	const origin = $derived(typeof window !== "undefined" ? window.location.origin : "");
+	const showSingboxIntegration = $derived(isSectionVisible($usageLevel, "singboxTunnels"));
+	const showHydraIntegration = $derived(isRoutingSubTabVisible($usageLevel, "hrNeo"));
+	const showDnsRouteCard = $derived(isRoutingSubTabVisible($usageLevel, "dnsRoutes"));
 	let updateInfo: UpdateInfo | null = $state(null);
 	let restarting = $state(false);
 	let restartConfirmOpen = $state(false);
@@ -109,6 +121,7 @@
 		saving = true;
 		try {
 			settings = await api.updateSettings({ ...settings, authEnabled: enabled });
+			setGlobalSettings(settings);
 			notifications.success(enabled ? "Авторизация включена" : "Авторизация отключена");
 		} catch {
 			notifications.error("Ошибка сохранения настроек");
@@ -125,6 +138,7 @@
 			// over plain HTTP (router LAN context), so the backend produces
 			// the UUID via crypto/rand and persists it in one round-trip.
 			settings = await api.regenerateApiKey();
+			setGlobalSettings(settings);
 			notifications.success("API ключ сгенерирован");
 		} catch {
 			notifications.error("Ошибка генерации ключа");
@@ -141,6 +155,7 @@
 				...settings,
 				logging: { ...settings.logging, enabled },
 			});
+			setGlobalSettings(settings);
 			notifications.success(enabled ? "Логирование включено" : "Логирование отключено");
 		} catch {
 			notifications.error("Ошибка сохранения настроек");
@@ -154,6 +169,7 @@
 		saving = true;
 		try {
 			settings = await api.updateSettings(settings);
+			setGlobalSettings(settings);
 			notifications.success("Настройки логирования сохранены");
 		} catch {
 			notifications.error("Ошибка сохранения настроек");
@@ -178,6 +194,7 @@
 					refreshMode: settings.dnsRoute.refreshMode || "interval",
 				},
 			});
+			setGlobalSettings(settings);
 			notifications.success(enabled ? "Автообновление подписок включено" : "Автообновление подписок отключено");
 		} catch {
 			notifications.error("Ошибка сохранения настроек");
@@ -191,6 +208,7 @@
 		saving = true;
 		try {
 			settings = await api.updateSettings(settings);
+			setGlobalSettings(settings);
 			notifications.success("Настройки автообновления сохранены");
 		} catch {
 			notifications.error("Ошибка сохранения настроек");
@@ -207,9 +225,24 @@
 				...settings,
 				updates: { ...settings.updates, checkEnabled: enabled },
 			});
+			setGlobalSettings(settings);
 			notifications.success(enabled ? "Автопроверка обновлений включена" : "Автопроверка обновлений отключена");
 		} catch {
 			notifications.error("Ошибка сохранения настроек");
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function selectUsageLevel(level: UsageLevel) {
+		if (!settings) return;
+		saving = true;
+		try {
+			settings = await api.updateSettings({ ...settings, usageLevel: level });
+			setGlobalSettings(settings);
+			notifications.success(`Уровень: ${USAGE_LEVEL_LABELS[level]}`);
+		} catch {
+			notifications.error("Не удалось сохранить уровень");
 		} finally {
 			saving = false;
 		}
@@ -253,10 +286,18 @@
 					{singboxInstalling}
 					{singboxInstallError}
 					oninstallSingbox={installSingbox}
+					showSingbox={showSingboxIntegration}
+					showHydra={showHydraIntegration}
 				/>
 			</aside>
 
 			<main class="settings-right">
+				<UsageLevelCard
+					value={settings.usageLevel}
+					{saving}
+					onSelect={selectUsageLevel}
+				/>
+
 				<div class="card">
 					<div class="section-label">Доступ</div>
 					<div class="setting-row">
@@ -295,7 +336,7 @@
 					/>
 				</div>
 
-				{#if systemInfo.isOS5}
+				{#if systemInfo.isOS5 && showDnsRouteCard}
 					<div class="card">
 						<div class="section-label">DNS-маршрутизация</div>
 						<DnsRouteSettings
@@ -307,6 +348,7 @@
 					</div>
 				{/if}
 
+				{#if $usageLevel === "expert"}
 				<div class="card">
 					<div class="section-label">Расширенные</div>
 					<div class="setting-row">
@@ -330,6 +372,7 @@
 						</div>
 					</div>
 				</div>
+				{/if}
 			</main>
 		</div>
 
@@ -449,11 +492,14 @@
 		display: inline-flex;
 		gap: 0.5rem;
 		align-items: center;
-		flex-shrink: 0;
+		flex-shrink: 1;
+		min-width: 0;
+		flex-wrap: wrap;
 	}
 
 	.api-key-input {
 		width: 22rem;
+		min-width: 0;
 		max-width: 100%;
 		padding: 0.375rem 0.5rem;
 		font-family: var(--font-mono, ui-monospace, monospace);
