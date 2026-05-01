@@ -57,15 +57,17 @@
 	}
 
 	const userRules = $derived(rules.filter((r) => !isSystem(r)));
-	const sniffActive = $derived(rules.some((r) => r.action === 'sniff'));
+	const rejectCount = $derived(
+		rules.filter((r) => r.action === 'reject').length,
+	);
 
 	const statTiles = $derived<StatTile[]>([
 		{ label: 'Правил', value: rules.length },
 		{ label: 'Активных', value: userRules.length },
 		{
-			label: 'Sniff',
-			value: sniffActive ? 'вкл' : 'выкл',
-			accent: sniffActive ? 'success' : 'default',
+			label: 'Reject',
+			value: rejectCount,
+			accent: rejectCount > 0 ? 'error' : 'default',
 		},
 	]);
 
@@ -101,12 +103,6 @@
 		if (r.rule_set?.length) parts.push(`set: ${r.rule_set.join(', ')}`);
 		if (r.port?.length) parts.push(`port: ${r.port.join(',')}`);
 		return parts.join(' · ') || '—';
-	}
-
-	function outboundLabel(r: SingboxRouterRule): string {
-		if (r.action === 'route' && r.outbound) return r.outbound;
-		if (r.action === 'reject') return '—';
-		return '—';
 	}
 
 	let editIndex = $state<number | null>(null);
@@ -182,7 +178,7 @@
 					</div>
 					<div class="col-out mono">
 						{#if r.action === 'route' && r.outbound}
-							<Badge variant="accent" size="sm" mono>{outboundLabel(r)}</Badge>
+							<Badge variant="accent" size="sm" mono>{r.outbound}</Badge>
 						{:else}
 							<span class="dim">—</span>
 						{/if}
