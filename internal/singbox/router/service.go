@@ -379,6 +379,14 @@ func (s *ServiceImpl) healTProxyInbound(ctx context.Context) error {
 // through to the listener and get RST. NAT REDIRECT sidesteps the
 // problem: conntrack records the DNAT for SYN, established packets
 // are auto-translated.
+//
+// Both inbounds bind to 0.0.0.0 because iptables REDIRECT rewrites
+// the packet destination to the *primary IP of the inbound interface*
+// (e.g. 10.10.10.1 on br0), NOT to 127.0.0.1. A listener on 127.0.0.1
+// would never see redirected packets — kernel emits RST. SKeen uses
+// "::" for the same reason.
+const inboundListen = "0.0.0.0"
+
 func ensureTProxyInbound(in []Inbound) []Inbound {
 	hasTProxy := false
 	hasRedirect := false
@@ -406,10 +414,16 @@ func ensureTProxyInbound(in []Inbound) []Inbound {
 			if in[i].RoutingMark != 0 {
 				in[i].RoutingMark = 0
 			}
+			if in[i].Listen != inboundListen {
+				in[i].Listen = inboundListen
+			}
 		case "redirect-in":
 			hasRedirect = true
 			if !in[i].TCPFastOpen {
 				in[i].TCPFastOpen = true
+			}
+			if in[i].Listen != inboundListen {
+				in[i].Listen = inboundListen
 			}
 		}
 	}
@@ -418,7 +432,7 @@ func ensureTProxyInbound(in []Inbound) []Inbound {
 		out = append([]Inbound{{
 			Type:        "tproxy",
 			Tag:         "tproxy-in",
-			Listen:      "127.0.0.1",
+			Listen:      inboundListen,
 			ListenPort:  TPROXYPort,
 			Network:     "udp",
 			UDPFragment: true,
@@ -429,7 +443,7 @@ func ensureTProxyInbound(in []Inbound) []Inbound {
 		out = append([]Inbound{{
 			Type:        "redirect",
 			Tag:         "redirect-in",
-			Listen:      "127.0.0.1",
+			Listen:      inboundListen,
 			ListenPort:  RedirectPort,
 			TCPFastOpen: true,
 		}}, out...)
