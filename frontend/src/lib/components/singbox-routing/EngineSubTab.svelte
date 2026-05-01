@@ -14,18 +14,17 @@
 		StatusDot,
 	} from '$lib/components/ui';
 	import type { DropdownOption } from '$lib/components/ui';
+	import { NetfilterMissingBanner } from '$lib/components/routing/singboxRouter';
 
 	const statusStore = singboxRouter.status;
 	const settingsStore = singboxRouter.settings;
 	const rulesStore = singboxRouter.rules;
 	const ruleSetsStore = singboxRouter.ruleSets;
-	const outboundsStore = singboxRouter.outbounds;
 
 	const status = $derived($statusStore);
 	const settings = $derived($settingsStore);
 	const rules = $derived($rulesStore);
 	const ruleSets = $derived($ruleSetsStore);
-	const outbounds = $derived($outboundsStore);
 
 	let busy = $state(false);
 	let policies = $state<RouterPolicy[]>([]);
@@ -141,20 +140,18 @@
 		(status?.issues ?? []).filter((i) => i.kind !== 'policy-missing'),
 	);
 
-	// Composite + AWG + tunnel-derived outbound tags. The composite list
-	// already contains the user-curated outbounds; AWG count is reported
-	// by the backend; tunnel tags are part of the router config but not
-	// surfaced as a separate count yet, so we sum what the backend gives.
-	const outboundsCount = $derived(
-		(status?.outboundCompositeCount ?? 0) + (status?.outboundAwgCount ?? 0),
-	);
+	const outboundsCount = $derived(status?.outboundCompositeCount ?? 0);
 
-	const issuesCount = $derived(status?.issues?.length ?? 0);
+	const issuesCount = $derived(visibleIssues.length);
 	const rulesCount = $derived(status?.ruleCount ?? rules.length);
 	const ruleSetsCount = $derived(status?.ruleSetCount ?? ruleSets.length);
 </script>
 
 {#if status}
+	{#if !status.netfilterAvailable}
+		<NetfilterMissingBanner componentName={status.netfilterComponentName} />
+	{/if}
+
 	<!-- Engine state card -->
 	<Card padding="md">
 		<div class="engine-card">
@@ -231,6 +228,13 @@
 			{/if}
 		</div>
 	</Card>
+
+	{#if !status.enabled}
+		<div class="disabled-hint">
+			Движок выключен. Настройте правила/rule sets/outbounds сейчас —
+			они вступят в силу после включения.
+		</div>
+	{/if}
 
 	<!-- Stat tiles -->
 	<div class="stat-row">
@@ -452,6 +456,16 @@
 		padding: 2rem;
 		text-align: center;
 		color: var(--color-text-secondary);
+	}
+	.disabled-hint {
+		padding: 0.6rem 0.9rem;
+		margin: 0.75rem 0;
+		background: rgba(122, 162, 247, 0.08);
+		border-left: 3px solid var(--accent, #3b82f6);
+		border-radius: 4px;
+		color: var(--muted-text);
+		font-size: 0.85rem;
+		line-height: 1.4;
 	}
 	@media (max-width: 720px) {
 		.stat-row {
