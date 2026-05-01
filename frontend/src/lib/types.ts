@@ -1172,20 +1172,6 @@ export interface RouterPolicy {
 	isOurDefault: boolean;
 }
 
-/**
- * One LAN device known to NDMS hotspot, annotated with whether it's
- * currently bound to a specific policy. Distinct from the broader
- * PolicyDevice (accesspolicy domain, includes hostname/active/link/policy):
- * router only needs the bind decision + identifying fields.
- * Source: GET /api/singbox/router/policy-devices?name=X.
- */
-export interface RouterPolicyDevice {
-	mac: string;
-	ip: string;
-	name: string;
-	bound: boolean;
-}
-
 export interface SingboxRouterRule {
 	domain_suffix?: string[];
 	ip_cidr?: string[];
