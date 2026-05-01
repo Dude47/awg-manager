@@ -136,7 +136,6 @@
         clientvpn: 'clientRoutes',
         dns: 'dnsRoutes',
         ip: 'ipRoutes',
-        deviceproxy: 'deviceProxy',
         hrneo: 'hrNeo',
         singbox: 'singboxRouter',
     };
