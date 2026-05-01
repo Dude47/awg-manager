@@ -216,7 +216,15 @@ func buildRestoreInput(spec RestoreInputSpec) string {
 		ChainName, TPROXYPort, Fwmark)
 
 	if spec.PolicyMark != "" {
-		fmt.Fprintf(&b, "-I PREROUTING 1 -m connmark --mark %s -j %s\n", spec.PolicyMark, ChainName)
+		// `--ctdir ORIGINAL` restricts the jump to packets in the
+		// original direction of the conntrack flow — i.e. outbound from
+		// the LAN client to the internet. Without this filter, NDMS's
+		// connmark applies to BOTH directions of the conntrack entry,
+		// so reply packets coming back from the internet would also be
+		// TPROXY-redirected into sing-box, breaking the return path
+		// (sing-box has no socket for the reply, packets get dropped
+		// instead of being delivered to the client via NDMS DNAT).
+		fmt.Fprintf(&b, "-I PREROUTING 1 -m connmark --mark %s -m conntrack --ctdir ORIGINAL -j %s\n", spec.PolicyMark, ChainName)
 	}
 
 	b.WriteString("COMMIT\n")

@@ -77,7 +77,9 @@ func TestKernelModuleName(t *testing.T) {
 func TestBuildRestoreInput_PolicyMark_EmitsConnmarkRule(t *testing.T) {
 	spec := RestoreInputSpec{PolicyMark: "0xffffaaa"}
 	out := buildRestoreInput(spec)
-	want := "-I PREROUTING 1 -m connmark --mark 0xffffaaa -j " + ChainName
+	// `--ctdir ORIGINAL` is mandatory — without it reply packets get
+	// TPROXY-redirected and the client never sees responses.
+	want := "-I PREROUTING 1 -m connmark --mark 0xffffaaa -m conntrack --ctdir ORIGINAL -j " + ChainName
 	if !strings.Contains(out, want) {
 		t.Errorf("output missing PREROUTING rule\nwant substring: %s\ngot:\n%s", want, out)
 	}
