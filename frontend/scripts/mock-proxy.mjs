@@ -9,6 +9,8 @@
 // - Sing-box composite proxies (Feature 1): stateful stubs for
 //   /singbox/router/proxies/{list,select,test} so the redesigned routing UI
 //   can be smoke-tested without a real router. Selections persist in-memory.
+// - /monitoring/matrix injects 2 sample t2sX rows so the redesigned monitoring
+//   badge can be smoke-tested.
 // Default upstream: http://127.0.0.1:8080 (Prism). Listen: 8081.
 
 import http from 'node:http';
@@ -174,6 +176,42 @@ const server = http.createServer((req, res) => {
 				const fake = applyFilters(buildFakeSingboxEntries(), url.searchParams);
 				body.data.logs = body.data.logs.concat(fake);
 				body.data.total = (body.data.total ?? body.data.logs.length);
+			}
+			send(res, status, body);
+		});
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/monitoring/matrix') {
+		fetchJSON('/monitoring/matrix').then(({ status, body }) => {
+			if (body && typeof body === 'object' && body.data) {
+				const data = body.data;
+				data.tunnels = [
+					...(data.tunnels ?? []),
+					{
+						id: 'veesp',
+						name: 'veesp',
+						ifaceName: 't2s0',
+						pingcheckTarget: '',
+						selfTarget: '',
+						selfMethod: 'disabled',
+						source: 'singbox',
+						singboxTag: 'veesp',
+						clashDelay: 78,
+						urltestGroup: 'auto',
+					},
+					{
+						id: 'prague',
+						name: 'prague',
+						ifaceName: 't2s1',
+						pingcheckTarget: '',
+						selfTarget: '',
+						selfMethod: 'disabled',
+						source: 'singbox',
+						singboxTag: 'prague',
+						// no urltest data — UI should NOT show the badge
+					},
+				];
 			}
 			send(res, status, body);
 		});
