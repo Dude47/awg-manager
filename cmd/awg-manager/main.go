@@ -620,6 +620,7 @@ func main() {
 	delayChecker := singbox.NewDelayChecker(singboxOp.Clash(), singboxOp, eventBus)
 	singboxHandler := api.NewSingboxHandler(singboxOp, eventBus, delayChecker, testService)
 	clashProxy := api.NewClashProxy(singboxOp)
+	singboxConnsHandler := api.NewSingboxConnectionsHandler(ndmsQueries.Hotspot)
 
 	// Watchdog: runs an immediate reconcile (replacing the old one-shot
 	// startup reconcile) and keeps checking every 30s. If sing-box crashes
@@ -703,6 +704,7 @@ func main() {
 		hydraService,
 		singboxHandler,
 		clashProxy,
+		singboxConnsHandler,
 		monitoringService,
 	)
 
