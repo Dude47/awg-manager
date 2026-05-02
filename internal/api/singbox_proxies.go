@@ -194,10 +194,6 @@ func (h *SingboxProxiesHandler) clashGet(ctx context.Context, path, query string
 	return io.ReadAll(resp.Body)
 }
 
-// queryEscape is a tiny wrapper so callers don't have to import
-// net/url for one-off escapes.
-func queryEscape(s string) string { return url.QueryEscape(s) }
-
 // Select godoc
 //
 //	@Summary		Switch active member of a sing-box selector group
@@ -272,6 +268,61 @@ func (h *SingboxProxiesHandler) Select(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.Success(w, struct{}{})
+}
+
+const (
+	defaultTestURL     = "https://www.gstatic.com/generate_204"
+	defaultTestTimeout = 5000
+)
+
+// Test godoc
+//
+//	@Summary		Force latency test for all members of a composite group
+//	@Description	Calls Clash `/group/<name>/delay`, returning the per-member delay map. Members that timed out come back with 0.
+//	@Tags			singbox-router
+//	@Accept			json
+//	@Produce		json
+//	@Security		CookieAuth
+//	@Param			body	body		SingboxProxiesTestRequest	true	"Group and optional URL/timeout"
+//	@Success		200		{object}	OkResponse{data=SingboxProxiesTestResponse}
+//	@Failure		400		{object}	APIErrorEnvelope
+//	@Failure		405		{object}	APIErrorEnvelope
+//	@Failure		502		{object}	APIErrorEnvelope
+//	@Router			/singbox/router/proxies/test [post]
+func (h *SingboxProxiesHandler) Test(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.MethodNotAllowed(w)
+		return
+	}
+	var req SingboxProxiesTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.ErrorWithStatus(w, http.StatusBadRequest, "invalid JSON: "+err.Error(), "INVALID_REQUEST")
+		return
+	}
+	if req.Group == "" {
+		response.ErrorWithStatus(w, http.StatusBadRequest, "group required", "INVALID_REQUEST")
+		return
+	}
+	if req.URL == "" {
+		req.URL = defaultTestURL
+	}
+	if req.Timeout <= 0 {
+		req.Timeout = defaultTestTimeout
+	}
+
+	// Build query: ?url=...&timeout=...
+	q := "url=" + url.QueryEscape(req.URL) + "&timeout=" + fmt.Sprintf("%d", req.Timeout)
+	raw, err := h.clashGet(r.Context(), "/group/"+url.PathEscape(req.Group)+"/delay", q)
+	if err != nil {
+		response.ErrorWithStatus(w, http.StatusBadGateway, err.Error(), "CLASH_UNREACHABLE")
+		return
+	}
+	var delays map[string]int
+	if err := json.Unmarshal(raw, &delays); err != nil {
+		response.InternalError(w, "parse clash response: "+err.Error())
+		return
+	}
+	response.Success(w, SingboxProxiesTestResponse{Delays: delays})
 }
 
 // clashPut sends a PUT with a JSON body to the upstream Clash API.

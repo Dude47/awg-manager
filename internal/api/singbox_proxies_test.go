@@ -140,3 +140,41 @@ func TestSingboxProxiesHandler_Select_GroupNotSelector(t *testing.T) {
 		t.Errorf("expected GROUP_NOT_SELECTOR code, got %s", rec.Body.String())
 	}
 }
+
+func TestSingboxProxiesHandler_Test_HappyPath(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /group/<name>/delay
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/group/") && strings.HasSuffix(r.URL.Path, "/delay") {
+			_, _ = w.Write([]byte(`{"vless-1":45,"vless-2":78,"vless-3":0}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(upstream.Close)
+
+	known := map[string]struct{}{"auto": {}}
+	h := &SingboxProxiesHandler{
+		clashBaseURL:    func() string { return upstream.URL },
+		knownComposites: func() map[string]struct{} { return known },
+		httpClient:      upstream.Client(),
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/singbox/router/proxies/test",
+		strings.NewReader(`{"group":"auto"}`))
+	h.Test(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var env struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Delays map[string]int `json:"delays"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.Delays["vless-1"] != 45 || env.Data.Delays["vless-3"] != 0 {
+		t.Errorf("unexpected delays: %+v", env.Data.Delays)
+	}
+}
