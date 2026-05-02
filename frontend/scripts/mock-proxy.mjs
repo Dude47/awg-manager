@@ -183,9 +183,12 @@ const server = http.createServer((req, res) => {
 	}
 
 	if (req.method === 'GET' && path === '/monitoring/matrix') {
+		const forced = (req.url ?? '').includes('force=1');
 		fetchJSON('/monitoring/matrix').then(({ status, body }) => {
 			if (body && typeof body === 'object' && body.data) {
 				const data = body.data;
+				// On force=1 jitter the synthetic delay so the user sees the badge change.
+				const veespDelay = forced ? 40 + Math.floor(Math.random() * 240) : 78;
 				data.tunnels = [
 					...(data.tunnels ?? []),
 					{
@@ -197,7 +200,7 @@ const server = http.createServer((req, res) => {
 						selfMethod: 'disabled',
 						source: 'singbox',
 						singboxTag: 'veesp',
-						clashDelay: 78,
+						clashDelay: veespDelay,
 						urltestGroup: 'auto',
 					},
 					{
@@ -212,6 +215,7 @@ const server = http.createServer((req, res) => {
 						// no urltest data — UI should NOT show the badge
 					},
 				];
+				if (forced) data.updatedAt = new Date().toISOString();
 			}
 			send(res, status, body);
 		});
