@@ -1,7 +1,9 @@
 package internalpresets
 
-const sagerNetSiteRoot = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/"
-const sagerNetIPRoot = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/"
+const (
+	sagerNetSiteRoot = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/"
+	sagerNetIPRoot   = "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/"
+)
 
 type Preset struct {
 	ID        string     `json:"id"`
@@ -15,9 +17,13 @@ type Preset struct {
 	Sensitive bool       `json:"sensitive,omitempty"`
 }
 
-// Category constants for presets. Empty Category means "Featured /
-// uncategorised" — those render at the top of the gallery, outside the
-// chip filter.
+// Category constants for presets.
+//
+// A preset with Category == "" is rendered outside the chip filter — it
+// shows in the Featured row at the top, or, for the Sensitive preset, is
+// hidden behind the existing Sensitive toggle. Featured: true and an
+// empty Category are independent: a future featured preset could carry a
+// category, but today none do.
 const (
 	CatSocial    = "social"
 	CatMedia     = "media"
@@ -90,7 +96,13 @@ func All() []Preset {
 			RuleSets: []RuleRef{{Tag: "geosite-wikimedia", URL: sagerNetSiteRoot + "geosite-wikimedia.srs"}},
 			Rules:    []RuleLink{{RuleSetRef: "geosite-wikimedia", ActionTarget: "tunnel"}},
 		},
-		simpleGeosite("bbc", "BBC", CatMedia, "bbc"),
+		Preset{
+			ID: "bbc", Name: "BBC",
+			Category: CatMedia,
+			IconSlug: "bbc",
+			RuleSets: []RuleRef{{Tag: "geosite-bbc", URL: sagerNetSiteRoot + "geosite-bbc.srs"}},
+			Rules:    []RuleLink{{RuleSetRef: "geosite-bbc", ActionTarget: "tunnel"}},
+		},
 		Preset{
 			ID: "category-media", Name: "Всё медиа",
 			Category: CatMedia,
@@ -107,7 +119,16 @@ func All() []Preset {
 		// anthropic preset covers claude.ai too — no separate "claude"
 		// slot since SagerNet does not publish a geosite-claude.srs.
 		simpleGeosite("anthropic", "Anthropic / Claude", CatAI, "anthropic"),
-		simpleGeosite("gemini", "Gemini", CatAI, "googlegemini"),
+		// SagerNet upstream slug is "google-gemini"; our user-facing ID
+		// stays "gemini" so the URL path is the only place the dash
+		// appears.
+		Preset{
+			ID: "gemini", Name: "Gemini",
+			Category: CatAI,
+			IconSlug: "googlegemini",
+			RuleSets: []RuleRef{{Tag: "geosite-google-gemini", URL: sagerNetSiteRoot + "geosite-google-gemini.srs"}},
+			Rules:    []RuleLink{{RuleSetRef: "geosite-google-gemini", ActionTarget: "tunnel"}},
+		},
 		simpleGeosite("perplexity", "Perplexity", CatAI, "perplexity"),
 		Preset{
 			ID: "category-ai", Name: "Все AI сервисы",
@@ -123,7 +144,6 @@ func All() []Preset {
 	out = append(out,
 		simpleGeosite("github", "GitHub", CatDeveloper, "github"),
 		simpleGeosite("gitlab", "GitLab", CatDeveloper, "gitlab"),
-		simpleGeosite("stackoverflow", "Stack Overflow", CatDeveloper, "stackoverflow"),
 		simpleGeosite("docker", "Docker", CatDeveloper, "docker"),
 	)
 
