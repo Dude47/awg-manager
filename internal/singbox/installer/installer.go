@@ -45,7 +45,8 @@ type Installer struct {
 	// opkgRemove is overridable for tests; production uses defaultOpkgRemove.
 	// Hooked here (not in installer constructor) so Phase 3.3 (Migrate) can
 	// inject its own.
-	opkgRemove func(context.Context) error
+	opkgRemove        func(context.Context) error
+	opkgListInstalled func(context.Context) (string, error)
 }
 
 // New builds an Installer. arch maps into EmbeddedBinaries; spec is what
