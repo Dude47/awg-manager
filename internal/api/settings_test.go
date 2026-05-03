@@ -234,3 +234,33 @@ func TestUpdate_FullPayload_BehavesIdenticallyToBefore(t *testing.T) {
 		t.Errorf("full-payload identity merge failed: %+v", got)
 	}
 }
+
+// TestUpdate_ApiKeyExplicitEmpty_Preserved verifies the defense-in-depth
+// guard against a buggy/stale client accidentally revoking its own
+// Bearer-auth key. An explicit empty apiKey in the payload is treated as
+// "absent" so the saved key survives. The supported rotation path is
+// /settings/regenerate-api-key — explicit-clear is intentionally NOT a
+// public contract.
+func TestUpdate_ApiKeyExplicitEmpty_Preserved(t *testing.T) {
+	h, store := newSettingsHandlerForTest(t)
+
+	current, _ := store.Get()
+	seed := *current
+	seed.ApiKey = "preexisting-key"
+	if err := store.Save(&seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	body := []byte(`{"apiKey":""}`)
+	req := httptest.NewRequest(http.MethodPost, "/settings/update", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	got, _ := store.Get()
+	if got.ApiKey != "preexisting-key" {
+		t.Errorf("ApiKey = %q after explicit empty patch, want preexisting-key", got.ApiKey)
+	}
+}
