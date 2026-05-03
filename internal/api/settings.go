@@ -180,6 +180,20 @@ func (h *SettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// This replaces the previous zero-value-restore defense, which could
 	// not protect top-level bool flags (false vs absent were
 	// indistinguishable in a non-pointer DTO).
+	//
+	// NOTE: sub-structs are replaced wholesale (no recursion). The frontend
+	// always sends each sub-struct in full via spread, so omitting one
+	// inner field is not a supported partial-update pattern. If a future
+	// caller needs field-level granularity inside a sub-struct, add a
+	// dedicated *Patch type for that sub-struct.
+	//
+	// Defense-in-depth: an explicit empty ApiKey ("") would WIPE the key,
+	// stranding any Bearer-auth client. The intended rotation path is
+	// /settings/regenerate-api-key. Treat explicit empty as "absent" so a
+	// stale/buggy client cannot accidentally revoke its own key.
+	if patch.ApiKey != nil && *patch.ApiKey == "" {
+		patch.ApiKey = nil
+	}
 	merged := *oldSettings
 	storage.ApplyPatch(&merged, &patch)
 
