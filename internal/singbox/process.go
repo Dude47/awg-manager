@@ -45,9 +45,15 @@ type Process struct {
 	// stderr buffer (last ~16KB) is passed as the second argument.
 	OnExit func(err error, stderrTail string)
 
+	// startMu serialises Start and Stop so concurrent callers (watchdog tick
+	// + manual UI Restart) cannot both pass the IsRunning gate and spawn two
+	// processes. IsRunning is intentionally NOT guarded — it is called by the
+	// watchdog while a Start is in flight and must never block.
+	startMu sync.Mutex
+
 	// stderrMu protects lastStderr so OnExit / GetLastStderr concurrent.
-	stderrMu    sync.RWMutex
-	lastStderr  string
+	stderrMu   sync.RWMutex
+	lastStderr string
 
 	// For tests
 	startCmd func(bin string, args ...string) (*exec.Cmd, error)
@@ -80,7 +86,17 @@ const (
 // rule-set fetch), p.OnExit is invoked in a background goroutine and the
 // PID file is cleaned up — callers must rely on OnExit / IsRunning to
 // observe these late deaths.
+//
+// Start acquires startMu so concurrent callers cannot both pass the IsRunning
+// gate and spawn duplicate processes. IsRunning is intentionally lock-free.
 func (p *Process) Start() error {
+	p.startMu.Lock()
+	defer p.startMu.Unlock()
+	return p.startLocked()
+}
+
+// startLocked is the lock-free body of Start. Must be called with startMu held.
+func (p *Process) startLocked() error {
 	if running, _ := p.IsRunning(); running {
 		return nil
 	}
@@ -195,7 +211,15 @@ func (p *Process) setLastStderr(s string) {
 }
 
 // Stop sends SIGTERM, then SIGKILL after grace period.
+// Stop acquires startMu so it cannot interleave with an in-flight Start.
 func (p *Process) Stop() error {
+	p.startMu.Lock()
+	defer p.startMu.Unlock()
+	return p.stopLocked()
+}
+
+// stopLocked is the lock-free body of Stop. Must be called with startMu held.
+func (p *Process) stopLocked() error {
 	pid, err := p.readPID()
 	if err != nil {
 		return nil // nothing to stop
@@ -211,25 +235,48 @@ func (p *Process) Stop() error {
 	}
 	if isAlive(pid) {
 		_ = p.signalFn(pid, syscall.SIGKILL)
+		// Brief poll for the kernel to reap the SIGKILL'd process before
+		// removing the pid record. Without this, a follow-up Start that
+		// sees a missing pidfile could spawn a second process alongside
+		// a not-yet-dead-but-being-killed one.
+		killDeadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(killDeadline) {
+			if !isAlive(pid) {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
 	}
 	_ = os.Remove(p.pidPath)
 	return nil
 }
 
+// Reload acquires startMu for the entire stop+start sequence so callers
+// to concurrent Start/Stop see a single atomic transition. Worst-case
+// hold time is ~3.65s on the SIGHUP-failure path (3s SIGTERM poll +
+// 500ms startup grace + overhead). Callers waiting on the mutex during
+// a stuck Reload may appear hung — that is the price of "Reload is
+// atomic w.r.t. concurrent restarts".
+//
 // Reload sends SIGHUP; on failure, falls back to stop + start.
+// The lock-free helpers startLocked/stopLocked are used internally to
+// avoid a reentrant-lock deadlock.
 func (p *Process) Reload() error {
+	p.startMu.Lock()
+	defer p.startMu.Unlock()
+
 	pid, err := p.readPID()
 	if err != nil {
-		return p.Start() // no process, start fresh
+		return p.startLocked() // no process, start fresh
 	}
 	if err := p.signalFn(pid, syscall.SIGHUP); err != nil {
 		// SIGHUP failed; full restart
-		_ = p.Stop()
-		return p.Start()
+		_ = p.stopLocked()
+		return p.startLocked()
 	}
 	time.Sleep(150 * time.Millisecond)
 	if !isAlive(pid) {
-		return p.Start()
+		return p.startLocked()
 	}
 	return nil
 }

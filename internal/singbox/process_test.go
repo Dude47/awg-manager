@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 )
@@ -131,4 +133,46 @@ func TestProcess_OnExitDoesNotClobberSuccessorPid(t *testing.T) {
 		t.Errorf("pidfile not removed when it contained our pid: %v", err)
 	}
 
+}
+
+// 100 concurrent Start calls must result in exactly one process spawn.
+// This test covers the idempotent-gate property: with the mutex in
+// place, the IsRunning() check is observed atomically with cmd.Start,
+// so once one goroutine has spawned the process the rest see
+// IsRunning==true and skip. The test does NOT directly probe the
+// TOCTOU window between IsRunning and cmd.Start (a faithful test
+// would need to inject a delay there); rather, it asserts that
+// 100 contending callers respect the gate. Run with -race for
+// additional coverage.
+func TestProcess_StartIsConcurrencySafe(t *testing.T) {
+	dir := t.TempDir()
+	var spawnCount atomic.Int32
+
+	p := NewProcess("/bin/sleep", "/dev/null", filepath.Join(dir, "sing-box.pid"))
+	p.startCmd = func(bin string, args ...string) (*exec.Cmd, error) {
+		spawnCount.Add(1)
+		// Use a 2s sleep so the process outlives the 500ms grace period and
+		// stays alive long enough for all 100 serialised Starts to see
+		// IsRunning()==true and skip. Without the mutex they would race.
+		return exec.Command("/bin/sleep", "2"), nil
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = p.Start()
+		}()
+	}
+	wg.Wait()
+
+	// After the mutex serialises all calls, every goroutine after the first
+	// sees IsRunning()==true and returns early. Exactly one spawn expected.
+	if got := spawnCount.Load(); got != 1 {
+		t.Errorf("startCmd called %d times, want exactly 1", got)
+	}
+
+	// Cleanup: stop the long-running sleep process.
+	_ = p.Stop()
 }
