@@ -1,0 +1,103 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { WizardState } from '$lib/types';
+import { runWizard } from './wizardOrchestrator';
+
+const baseState = (): WizardState => ({
+	step: 'applying',
+	presetIds: ['netflix'],
+	tunnelTag: 'awg-vpn0',
+	deviceMacs: ['aa:aa:aa:aa:aa:01'],
+	policyName: 'SBRouter',
+	dnsServer: '1.1.1.1',
+	applyLog: [],
+	error: null,
+});
+
+const fakeApi = () => ({
+	singboxRouterListPolicies: vi.fn().mockResolvedValue([]),
+	singboxRouterCreatePolicy: vi.fn().mockResolvedValue({ name: 'SBRouter' }),
+	assignDeviceToPolicy: vi.fn().mockResolvedValue(undefined),
+	singboxRouterListDNSServers: vi.fn().mockResolvedValue([]),
+	singboxRouterAddDNSServer: vi.fn().mockResolvedValue(undefined),
+	singboxRouterApplyPreset: vi.fn().mockResolvedValue(undefined),
+	singboxRouterListDNSRules: vi.fn().mockResolvedValue([]),
+	singboxRouterAddDNSRule: vi.fn().mockResolvedValue(undefined),
+	singboxRouterUpdateDNSRule: vi.fn().mockResolvedValue(undefined),
+	singboxRouterEnable: vi.fn().mockResolvedValue(undefined),
+	singboxRouterStatus: vi.fn().mockResolvedValue({ running: true }),
+});
+
+const presets = [
+	{
+		id: 'netflix',
+		name: 'Netflix',
+		ruleSets: [{ tag: 'geosite-netflix', url: 'x' }],
+		rules: [{ ruleSetRef: 'geosite-netflix', actionTarget: 'tunnel' as const }],
+	},
+];
+
+describe('runWizard', () => {
+	let api: ReturnType<typeof fakeApi>;
+	beforeEach(() => {
+		api = fakeApi();
+	});
+
+	it('happy path: 7 phases all succeed', async () => {
+		const onProgress = vi.fn();
+		await runWizard(baseState(), { api, presets, onProgress });
+		expect(api.singboxRouterCreatePolicy).toHaveBeenCalledWith('SBRouter');
+		expect(api.assignDeviceToPolicy).toHaveBeenCalledWith('aa:aa:aa:aa:aa:01', 'SBRouter');
+		expect(api.singboxRouterAddDNSServer).toHaveBeenCalled();
+		expect(api.singboxRouterApplyPreset).toHaveBeenCalledWith('netflix', 'awg-vpn0');
+		expect(api.singboxRouterAddDNSRule).toHaveBeenCalled();
+		expect(api.singboxRouterEnable).toHaveBeenCalled();
+		expect(onProgress).toHaveBeenCalled();
+	});
+
+	it('skips createPolicy if SBRouter already exists', async () => {
+		api.singboxRouterListPolicies.mockResolvedValueOnce([{ name: 'SBRouter' }]);
+		await runWizard(baseState(), { api, presets, onProgress: vi.fn() });
+		expect(api.singboxRouterCreatePolicy).not.toHaveBeenCalled();
+	});
+
+	it('skips addDNSServer if wizard-upstream tag exists', async () => {
+		api.singboxRouterListDNSServers.mockResolvedValueOnce([{ tag: 'wizard-upstream' }]);
+		await runWizard(baseState(), { api, presets, onProgress: vi.fn() });
+		expect(api.singboxRouterAddDNSServer).not.toHaveBeenCalled();
+	});
+
+	it('throws on applyPreset failure with phase=applyPreset', async () => {
+		api.singboxRouterApplyPreset.mockRejectedValueOnce(new Error('rule_set 404'));
+		await expect(runWizard(baseState(), { api, presets, onProgress: vi.fn() }))
+			.rejects.toMatchObject({ phase: 'applyPreset', message: expect.stringContaining('404') });
+		expect(api.singboxRouterAddDNSRule).not.toHaveBeenCalled();
+		expect(api.singboxRouterEnable).not.toHaveBeenCalled();
+	});
+
+	it('throws on enableEngine failure with phase=enableEngine', async () => {
+		api.singboxRouterEnable.mockRejectedValueOnce(new Error('netfilter unavailable'));
+		await expect(runWizard(baseState(), { api, presets, onProgress: vi.fn() }))
+			.rejects.toMatchObject({ phase: 'enableEngine' });
+	});
+
+	it('throws if status never returns running:true within timeout', async () => {
+		api.singboxRouterStatus.mockResolvedValue({ running: false });
+		await expect(runWizard(baseState(), { api, presets, onProgress: vi.fn(), statusTimeoutMs: 50 }))
+			.rejects.toMatchObject({ phase: 'enableEngine', message: expect.stringContaining('подтвердил') });
+	});
+
+	it('updates existing DNS-rule with new rule_sets in append mode', async () => {
+		api.singboxRouterListDNSRules.mockResolvedValueOnce([
+			{ rule_set: ['geosite-spotify'], server: 'wizard-upstream' },
+		]);
+		await runWizard(baseState(), { api, presets, onProgress: vi.fn() });
+		expect(api.singboxRouterUpdateDNSRule).toHaveBeenCalledWith(
+			0,
+			expect.objectContaining({
+				rule_set: expect.arrayContaining(['geosite-spotify', 'geosite-netflix']),
+				server: 'wizard-upstream',
+			}),
+		);
+		expect(api.singboxRouterAddDNSRule).not.toHaveBeenCalled();
+	});
+});
