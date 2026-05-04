@@ -15,6 +15,19 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PRESETS_PATH = resolve(__dirname, 'mock-data/presets-snapshot.json');
+let presetsCache = null;
+async function getPresets() {
+	if (!presetsCache) {
+		presetsCache = JSON.parse(await readFile(PRESETS_PATH, 'utf8'));
+	}
+	return presetsCache;
+}
 
 const UPSTREAM = process.env.UPSTREAM ?? 'http://127.0.0.1:8080';
 const PORT = Number(process.env.PORT ?? 8081);
@@ -25,6 +38,18 @@ const VALID = new Set(['basic', 'advanced', 'expert']);
 // realistic case for development against the redesigned routing page.
 let usageLevel = 'expert';
 let singboxInstallShouldFail = process.env.MOCK_SINGBOX_INSTALL_FAIL === '1';
+
+// ── Wizard mock state ──────────────────────────────────────────
+let mockEngineRunning = false;
+let mockSBPolicyExists = false;
+let mockBoundDevices = new Set();
+let mockDNSServers = [];
+let mockDNSRules = [];
+const mockPolicyDevices = [
+	{ mac: 'aa:aa:aa:aa:aa:01', ip: '192.168.1.42', name: 'Test-Phone',    hostname: 'phone',  active: true, link: 'WiFi', policy: '' },
+	{ mac: 'aa:aa:aa:aa:aa:02', ip: '192.168.1.43', name: 'Test-Laptop',   hostname: 'laptop', active: true, link: 'WiFi', policy: '' },
+	{ mac: 'aa:aa:aa:aa:aa:03', ip: '192.168.1.44', name: 'BoundElsewhere', hostname: 'other', active: true, link: 'WiFi', policy: 'OtherPolicy' },
+];
 const FAKE_INSTALL_STDERR = `Collected errors:
  * verify_pkg_installable: Only have 12 KB available on filesystem /opt, pkg sing-box needs 18432
  * opkg_install_cmd: Cannot install package sing-box.
@@ -222,7 +247,7 @@ function randomizeDelays() {
 	}
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
 	const url = new URL(req.url, `http://${req.headers.host}`);
 	const path = url.pathname;
 
@@ -542,6 +567,128 @@ const server = http.createServer((req, res) => {
 			} catch (e) {
 				send(res, 400, { error: String(e) });
 			}
+		});
+		return;
+	}
+
+	// === Wizard mock overrides ===
+
+	if (req.method === 'GET' && path === '/singbox/router/presets/list') {
+		const data = await getPresets();
+		send(res, 200, { success: true, data: data.data });
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/routing/policy-devices') {
+		send(res, 200, { success: true, data: mockPolicyDevices });
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/singbox/router/policies') {
+		const policies = mockSBPolicyExists ? [{ name: 'SBRouter', description: 'wizard' }] : [];
+		send(res, 200, { success: true, data: policies });
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/router/policies') {
+		mockSBPolicyExists = true;
+		send(res, 200, { success: true, data: { name: 'SBRouter', description: 'wizard' } });
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/access-policies/assign') {
+		let raw = '';
+		req.on('data', (c) => (raw += c));
+		req.on('end', () => {
+			try {
+				const payload = JSON.parse(raw || '{}');
+				const mac = payload.mac;
+				if (mac) {
+					mockBoundDevices.add(mac);
+					const dev = mockPolicyDevices.find((d) => d.mac === mac);
+					if (dev) dev.policy = payload.policy ?? 'SBRouter';
+				}
+				send(res, 200, { success: true, data: {} });
+			} catch (e) {
+				send(res, 400, { success: false, error: { code: 'INVALID_REQUEST', message: String(e) } });
+			}
+		});
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/singbox/router/dns/servers/list') {
+		send(res, 200, { success: true, data: mockDNSServers });
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/router/dns/servers/add') {
+		let raw = '';
+		req.on('data', (c) => (raw += c));
+		req.on('end', () => {
+			try {
+				const payload = JSON.parse(raw || '{}');
+				mockDNSServers.push(payload);
+				send(res, 200, { success: true, data: payload });
+			} catch (e) {
+				send(res, 400, { success: false, error: { code: 'INVALID_REQUEST', message: String(e) } });
+			}
+		});
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/router/presets/apply') {
+		// simulate latency for visible "Применяем" log
+		await new Promise((r) => setTimeout(r, 200));
+		send(res, 200, { success: true, data: {} });
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/singbox/router/dns/rules/list') {
+		send(res, 200, { success: true, data: mockDNSRules });
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/router/dns/rules/add') {
+		let raw = '';
+		req.on('data', (c) => (raw += c));
+		req.on('end', () => {
+			try {
+				const payload = JSON.parse(raw || '{}');
+				mockDNSRules.push(payload);
+				send(res, 200, { success: true, data: payload });
+			} catch (e) {
+				send(res, 400, { success: false, error: { code: 'INVALID_REQUEST', message: String(e) } });
+			}
+		});
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/router/enable') {
+		mockEngineRunning = true;
+		send(res, 200, { success: true, data: {} });
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/singbox/router/status') {
+		send(res, 200, {
+			success: true,
+			data: {
+				enabled: mockEngineRunning,
+				installed: true,
+				running: mockEngineRunning,
+				version: '1.13.11',
+				configValid: true,
+				netfilterAvailable: true,
+				policyName: mockSBPolicyExists ? 'SBRouter' : '',
+			},
+		});
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/singbox/awg-outbounds/tags') {
+		send(res, 200, {
+			success: true,
+			data: [{ tag: 'awg-vpn0', label: 'DE Frankfurt', kind: 'managed', iface: 't2s0' }],
 		});
 		return;
 	}
