@@ -14,8 +14,11 @@
 	import { feedTraffic } from '$lib/stores/traffic';
 	import { usageLevel } from '$lib/stores/settings';
 	import { isSectionVisible } from '$lib/types/usageLevel';
+	import { subscriptionsStore } from '$lib/stores/subscriptions';
+	import SubscriptionList from '$lib/components/subscriptions/SubscriptionList.svelte';
+	import SubscriptionCreateModal from '$lib/components/subscriptions/SubscriptionCreateModal.svelte';
 
-	type TunnelTab = 'awg' | 'singbox';
+	type TunnelTab = 'awg' | 'singbox' | 'subscriptions';
 
 	// Polling-store subscription: first subscriber triggers the fetch,
 	// the last unsubscribe stops polling. `$tunnels` yields a
@@ -170,6 +173,13 @@
 
 	let singboxTunnelsList = $derived($singboxTunnels.data ?? []);
 
+	let unsubSubs: (() => void) | undefined;
+	onMount(() => { unsubSubs = subscriptionsStore.subscribe(() => {}); });
+	onDestroy(() => unsubSubs?.());
+
+	let subscriptionsList = $derived($subscriptionsStore.data ?? []);
+	let createModalOpen = $state(false);
+
 	// Tabs
 	let activeTab = $state<TunnelTab>('awg');
 
@@ -178,6 +188,9 @@
 			{ id: 'awg', label: 'AWG', badge: awgList.length + systemList.length },
 			isSectionVisible($usageLevel, 'singboxTunnels')
 				? { id: 'singbox', label: 'Sing-box', badge: singboxTunnelsList.length }
+				: null,
+			isSectionVisible($usageLevel, 'singboxTunnels')
+				? { id: 'subscriptions', label: 'Подписки', badge: subscriptionsList.length }
 				: null,
 		].filter((t): t is { id: string; label: string; badge: number } => t !== null),
 	);
@@ -193,12 +206,12 @@
 		// URL query wins over sessionStorage — lets other pages
 		// (e.g. /singbox/new) land the user on the right tab after an action.
 		const fromQuery = $page.url.searchParams.get('tab');
-		if (fromQuery === 'awg' || fromQuery === 'singbox') {
+		if (fromQuery === 'awg' || fromQuery === 'singbox' || fromQuery === 'subscriptions') {
 			activeTab = fromQuery;
 			return;
 		}
 		const stored = sessionStorage.getItem('tunnelsTab');
-		if (stored === 'awg' || stored === 'singbox') {
+		if (stored === 'awg' || stored === 'singbox' || stored === 'subscriptions') {
 			activeTab = stored;
 		}
 	});
@@ -518,6 +531,17 @@
 			</div>
 		{/if}
 		{/if}
+		{:else if activeTab === 'subscriptions'}
+			<div class="tunnels-toolbar">
+				<span class="tunnel-count">
+					{subscriptionsList.length}
+					{subscriptionsList.length === 1 ? 'подписка' : subscriptionsList.length < 5 ? 'подписки' : 'подписок'}
+				</span>
+				<div class="toolbar-actions">
+					<Button variant="primary" size="md" onclick={() => (createModalOpen = true)}>+ Добавить подписку</Button>
+				</div>
+			</div>
+			<SubscriptionList subscriptions={subscriptionsList} onAdd={() => (createModalOpen = true)} />
 		{:else}
 			<SingboxInstallBanner />
 			{#if singboxTunnelsList.length === 0}
@@ -593,6 +617,8 @@
 	tunnelName={referencedTunnelName}
 	onclose={() => { referencedDetails = null; referencedTunnelName = ''; }}
 />
+
+<SubscriptionCreateModal bind:open={createModalOpen} />
 
 {#if detailId}
 	{@const managed = awgList.find((x) => x.id === detailId)}

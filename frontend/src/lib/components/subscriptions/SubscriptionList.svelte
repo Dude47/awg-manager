@@ -1,12 +1,12 @@
 <script lang="ts">
 	import type { Subscription } from '$lib/types';
 	import SubscriptionCard from './SubscriptionCard.svelte';
-	import { goto } from '$app/navigation';
 
 	interface Props {
 		subscriptions: Subscription[];
+		onAdd: () => void;
 	}
-	let { subscriptions }: Props = $props();
+	let { subscriptions, onAdd }: Props = $props();
 </script>
 
 {#if subscriptions.length === 0}
@@ -15,7 +15,7 @@
 		<div class="esub">
 			Добавьте подписку — мастер скачает список серверов и создаст selector-туннель.
 		</div>
-		<button type="button" class="btn primary" onclick={() => goto('/subscriptions/new')}>
+		<button type="button" class="btn primary" onclick={onAdd}>
 			+ Добавить подписку
 		</button>
 	</div>

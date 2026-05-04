@@ -27,12 +27,6 @@
 			matches: (p) => p.startsWith('/servers'),
 		},
 		{
-			section: 'subscriptions',
-			href: '/subscriptions',
-			label: 'ПОДПИСКИ',
-			matches: (p) => p.startsWith('/subscriptions'),
-		},
-		{
 			section: 'routing',
 			href: '/routing',
 			label: 'МАРШРУТИЗАЦИЯ',
@@ -116,7 +110,6 @@
 		const map: Record<string, string> = {
 			ТУННЕЛИ: 'Туннели',
 			СЕРВЕРЫ: 'Серверы',
-			ПОДПИСКИ: 'Подписки',
 			МАРШРУТИЗАЦИЯ: 'Маршрутизация',
 			МОНИТОРИНГ: 'Мониторинг',
 			ДИАГНОСТИКА: 'Диагностика',

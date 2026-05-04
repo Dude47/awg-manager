@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { HAPP_PRESET } from './headersParser';
+	import { Dropdown } from '$lib/components/ui';
 
 	interface Props {
 		value: string;
@@ -14,17 +15,15 @@
 
 <div class="head">
 	<label class="lbl" for="hdr">Заголовки запроса (по одному на строку, формат «Key: Value»)</label>
-	<select
-		class="preset-picker"
-		onchange={(e) => {
-			const v = (e.currentTarget as HTMLSelectElement).value;
+	<Dropdown
+		placeholder="Подставить пресет"
+		options={[
+			{ value: 'happ', label: 'Happ iOS' },
+		]}
+		onchange={(v) => {
 			if (v === 'happ') applyPreset(HAPP_PRESET);
-			(e.currentTarget as HTMLSelectElement).value = '';
 		}}
-	>
-		<option value="">Подставить пресет</option>
-		<option value="happ">Happ iOS</option>
-	</select>
+	/>
 </div>
 <textarea
 	id="hdr"
@@ -44,14 +43,6 @@
 	.lbl {
 		color: var(--color-text-muted);
 		font-size: 0.85rem;
-	}
-	.preset-picker {
-		padding: 0.3rem 0.5rem;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		background: var(--color-bg-secondary);
-		color: var(--color-text-primary);
-		font-size: 0.8rem;
 	}
 	.textarea {
 		width: 100%;
