@@ -39,6 +39,32 @@ const VALID = new Set(['basic', 'advanced', 'expert']);
 let usageLevel = 'expert';
 let singboxInstallShouldFail = process.env.MOCK_SINGBOX_INSTALL_FAIL === '1';
 
+// ── Subscriptions mock state ───────────────────────────────────
+let mockSubscriptions = [];
+let mockSubID = 0;
+
+function newSub(input) {
+	mockSubID++;
+	const id = `sub-${mockSubID.toString().padStart(8, '0')}`;
+	const shortID = id.slice(0, 8);
+	return {
+		id,
+		label: input.label || 'Test',
+		url: input.url || 'https://test',
+		headers: input.headers || [],
+		refreshHours: input.refreshHours || 0,
+		lastFetched: new Date().toISOString(),
+		lastError: '',
+		selectorTag: `sub-${shortID}`,
+		inboundTag: `sub-${shortID}-in`,
+		listenPort: 11000 + mockSubID,
+		memberTags: [`sub-${shortID}-aaaa`, `sub-${shortID}-bbbb`],
+		orphanTags: [],
+		enabled: input.enabled,
+		isDefaultRoute: false,
+	};
+}
+
 // ── Wizard mock state ──────────────────────────────────────────
 let mockEngineRunning = false;
 let mockSBPolicyExists = false;
@@ -689,6 +715,108 @@ const server = http.createServer(async (req, res) => {
 		send(res, 200, {
 			success: true,
 			data: [{ tag: 'awg-vpn0', label: 'DE Frankfurt', kind: 'managed', iface: 't2s0' }],
+		});
+		return;
+	}
+
+	// === Subscriptions mock overrides ===
+
+	if (req.method === 'GET' && path === '/singbox/subscriptions') {
+		send(res, 200, { success: true, data: mockSubscriptions });
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/subscriptions/create') {
+		let raw = '';
+		req.on('data', (c) => (raw += c));
+		req.on('end', () => {
+			try {
+				const body = JSON.parse(raw || '{}');
+				const sub = newSub(body);
+				mockSubscriptions.push(sub);
+				send(res, 200, { success: true, data: sub });
+			} catch (e) {
+				send(res, 400, { success: false, error: { code: 'INVALID_REQUEST', message: String(e) } });
+			}
+		});
+		return;
+	}
+
+	if (req.method === 'GET' && path === '/singbox/subscriptions/get') {
+		const id = new URL(req.url, 'http://x').searchParams.get('id');
+		const sub = mockSubscriptions.find((s) => s.id === id);
+		if (!sub) {
+			send(res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'no such id' } });
+			return;
+		}
+		send(res, 200, { success: true, data: sub });
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/subscriptions/refresh') {
+		const id = new URL(req.url, 'http://x').searchParams.get('id');
+		const sub = mockSubscriptions.find((s) => s.id === id);
+		if (sub) sub.lastFetched = new Date().toISOString();
+		send(res, 200, {
+			success: true,
+			data: {
+				when: new Date().toISOString(),
+				added: 0,
+				updated: 2,
+				orphaned: 0,
+				skippedVmess: 1,
+				skippedOther: 0,
+			},
+		});
+		return;
+	}
+
+	if (req.method === 'DELETE' && path === '/singbox/subscriptions/delete') {
+		const id = new URL(req.url, 'http://x').searchParams.get('id');
+		mockSubscriptions = mockSubscriptions.filter((s) => s.id !== id);
+		send(res, 200, { success: true, data: { ok: true } });
+		return;
+	}
+
+	if (req.method === 'PUT' && path === '/singbox/subscriptions/update') {
+		let raw = '';
+		req.on('data', (c) => (raw += c));
+		req.on('end', () => {
+			try {
+				const body = JSON.parse(raw || '{}');
+				const id = new URL(req.url, 'http://x').searchParams.get('id');
+				const sub = mockSubscriptions.find((s) => s.id === id);
+				if (!sub) {
+					send(res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'no such id' } });
+					return;
+				}
+				Object.assign(sub, body);
+				send(res, 200, { success: true, data: sub });
+			} catch (e) {
+				send(res, 400, { success: false, error: { code: 'INVALID_REQUEST', message: String(e) } });
+			}
+		});
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/subscriptions/active-member') {
+		send(res, 200, { success: true, data: { ok: true } });
+		return;
+	}
+
+	if (req.method === 'POST' && path === '/singbox/subscriptions/default-route') {
+		let raw = '';
+		req.on('data', (c) => (raw += c));
+		req.on('end', () => {
+			try {
+				const body = JSON.parse(raw || '{}');
+				const id = new URL(req.url, 'http://x').searchParams.get('id');
+				const sub = mockSubscriptions.find((s) => s.id === id);
+				if (sub) sub.isDefaultRoute = body.enabled;
+				send(res, 200, { success: true, data: { ok: true } });
+			} catch (e) {
+				send(res, 400, { success: false, error: { code: 'INVALID_REQUEST', message: String(e) } });
+			}
 		});
 		return;
 	}
