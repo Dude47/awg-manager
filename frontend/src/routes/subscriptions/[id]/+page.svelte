@@ -5,7 +5,6 @@
 	import type { Subscription } from '$lib/types';
 	import { PageContainer, PageHeader } from '$lib/components/layout';
 	import { Tabs } from '$lib/components/ui';
-	import SubscriptionOverviewTab from '$lib/components/subscriptions/SubscriptionOverviewTab.svelte';
 	import SubscriptionMembersTab from '$lib/components/subscriptions/SubscriptionMembersTab.svelte';
 	import SubscriptionSettingsTab from '$lib/components/subscriptions/SubscriptionSettingsTab.svelte';
 
@@ -14,7 +13,7 @@
 	let loading = $state(true);
 	let error = $state('');
 
-	let active = $state<'overview' | 'members' | 'settings'>('overview');
+	let active = $state<'members' | 'settings'>('members');
 
 	async function reload(): Promise<void> {
 		try {
@@ -42,17 +41,14 @@
 		<PageHeader title={subscription.label || subscription.url} />
 		<Tabs
 			tabs={[
-				{ id: 'overview', label: 'Обзор' },
 				{ id: 'members', label: `Серверы (${subscription.memberTags.length})` },
 				{ id: 'settings', label: 'Настройки' },
 			]}
 			active={active}
-			onchange={(tabId) => (active = tabId as 'overview' | 'members' | 'settings')}
+			onchange={(tabId) => (active = tabId as 'members' | 'settings')}
 		/>
 		<section class="content">
-			{#if active === 'overview'}
-				<SubscriptionOverviewTab {subscription} onUpdated={reload} />
-			{:else if active === 'members'}
+			{#if active === 'members'}
 				<SubscriptionMembersTab {subscription} onUpdated={reload} />
 			{:else}
 				<SubscriptionSettingsTab {subscription} onUpdated={reload} />
