@@ -15,8 +15,10 @@ import (
 // has "proxies:" within the first few hundred bytes; 4 KB is a forgiving cap.
 const scanLimit = 4 * 1024
 
-// proxiesHeaderRe matches a top-level "proxies:" key (no leading indent).
-var proxiesHeaderRe = regexp.MustCompile(`(?m)^proxies:\s*$`)
+// matches a top-level "proxies:" key — accepts block (proxies: + newline),
+// inline ("proxies: []"), null marker ("proxies: null"), and any other
+// permissive form. Tolerable false positives are documented above.
+var proxiesHeaderRe = regexp.MustCompile(`(?m)^proxies:`)
 
 // IsClashYAML reports whether body looks like a Clash/mihomo subscription
 // (top-level "proxies:" key in valid YAML). Cheap: scans the first 4 KB only.

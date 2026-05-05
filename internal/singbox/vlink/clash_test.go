@@ -10,6 +10,9 @@ func TestIsClashYAML(t *testing.T) {
 	}{
 		{"proxies header", "proxies:\n  - name: a\n    type: vless\n", true},
 		{"proxies header with leading whitespace lines", "\n# comment\nproxies:\n  - name: a\n", true},
+		{"proxies inline empty", "proxies: []\n", true},
+		{"proxies null", "proxies: null\n", true},
+		{"proxies followed by document body", "---\nproxies:\n  - name: a\n", true},
 		{"share-link vless", "vless://uuid@host:443?security=tls\n", false},
 		{"html", "<!DOCTYPE html><html></html>", false},
 		{"base64", "dmxlc3M6Ly91dWlkQGhvc3Q6NDQz", false},
