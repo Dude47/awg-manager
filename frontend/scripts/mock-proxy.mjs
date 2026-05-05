@@ -542,20 +542,37 @@ const server = http.createServer(async (req, res) => {
 				const payload = JSON.parse(raw || '{}');
 				const group = typeof payload.group === 'string' ? payload.group : '';
 				const g = mockProxies[group];
-				if (!g) {
+				if (g) {
+					// Known proxy group — use the randomised delay table.
+					randomizeDelays();
+					const delays = {};
+					for (const memberTag of g.all) {
+						delays[memberTag] = mockProxyDelays[memberTag] ?? 0;
+					}
+					send(res, 200, { success: true, data: { delays } });
+					console.log(`[mock-proxy] proxies.test ${group} → ${JSON.stringify(delays)}`);
+					return;
+				}
+				// Subscription selector group — synthesize per-tag delays via hash.
+				const sub = mockSubscriptions.find((s) => s.selectorTag === group);
+				if (!sub) {
 					send(res, 404, {
 						success: false,
 						error: { code: 'PROXY_GROUP_NOT_FOUND', message: `group ${group} not found` },
 					});
 					return;
 				}
-				randomizeDelays();
 				const delays = {};
-				for (const memberTag of g.all) {
-					delays[memberTag] = mockProxyDelays[memberTag] ?? 0;
+				for (const tag of sub.memberTags) {
+					// Stable hash of the tag → base latency 30..400 ms, plus jitter.
+					let h = 0;
+					for (let i = 0; i < tag.length; i++) h = ((h << 5) - h + tag.charCodeAt(i)) | 0;
+					const base = Math.abs(h) % 370 + 30;
+					const jitter = Math.floor(Math.random() * 40) - 20;
+					delays[tag] = Math.max(1, base + jitter);
 				}
 				send(res, 200, { success: true, data: { delays } });
-				console.log(`[mock-proxy] proxies.test ${group} → ${JSON.stringify(delays)}`);
+				console.log(`[mock-proxy] proxies.test sub ${group} → ${JSON.stringify(delays)}`);
 			} catch (e) {
 				send(res, 400, {
 					success: false,
