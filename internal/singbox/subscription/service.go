@@ -214,7 +214,12 @@ func (s *Service) applyDiff(ctx context.Context, sub *Subscription, diff DiffRes
 	return s.mutator.Reload(ctx)
 }
 
-func (s *Service) Delete(ctx context.Context, id string, cascade bool) error {
+// Delete tears down a subscription unconditionally: the NDMS ProxyN, mixed
+// inbound, selector outbound, route rule, and per-member outbounds are all
+// removed. ConfigMutator errors are non-blocking — sing-box config may have
+// drifted; the subscription row still gets removed from storage so the user
+// is not stuck with an undeletable entry.
+func (s *Service) Delete(ctx context.Context, id string) error {
 	mu := s.lockSub(id)
 	mu.Lock()
 	defer mu.Unlock()
@@ -223,22 +228,20 @@ func (s *Service) Delete(ctx context.Context, id string, cascade bool) error {
 	if err != nil {
 		return err
 	}
-	if cascade {
-		s.mutator.RemoveRouteRule(sub.InboundTag, sub.SelectorTag)
-		s.mutator.RemoveInbound(sub.InboundTag)
-		s.mutator.RemoveOutbound(sub.SelectorTag)
-		for _, m := range sub.MemberTags {
-			s.mutator.RemoveOutbound(m)
+
+	s.mutator.RemoveRouteRule(sub.InboundTag, sub.SelectorTag)
+	s.mutator.RemoveInbound(sub.InboundTag)
+	s.mutator.RemoveOutbound(sub.SelectorTag)
+	for _, m := range sub.MemberTags {
+		s.mutator.RemoveOutbound(m)
+	}
+	if sub.ProxyIndex >= 0 {
+		if err := s.mutator.RemoveProxy(ctx, sub.ProxyIndex); err != nil {
+			s.store.UpdateState(id, RefreshResult{When: time.Now(), Err: err})
 		}
-		if sub.ProxyIndex >= 0 {
-			if err := s.mutator.RemoveProxy(ctx, sub.ProxyIndex); err != nil {
-				// Log but don't block delete — orphan ProxyN is recoverable.
-				s.store.UpdateState(id, RefreshResult{When: time.Now(), Err: err})
-			}
-		}
-		if err := s.mutator.Reload(ctx); err != nil {
-			return fmt.Errorf("subscription: cascade delete reload: %w", err)
-		}
+	}
+	if err := s.mutator.Reload(ctx); err != nil {
+		return fmt.Errorf("subscription: delete reload: %w", err)
 	}
 	return s.store.Delete(id)
 }

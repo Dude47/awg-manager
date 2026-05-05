@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/hoaxisr/awg-manager/internal/response"
 	"github.com/hoaxisr/awg-manager/internal/singbox/subscription"
@@ -31,21 +30,21 @@ type SubscriptionMemberDTO struct {
 
 // SubscriptionDTO mirrors subscription.Subscription for OpenAPI exposure.
 type SubscriptionDTO struct {
-	ID             string                  `json:"id" example:"abc123"`
-	Label          string                  `json:"label" example:"Provider X"`
-	URL            string                  `json:"url" example:"https://prov.example/sub/a"`
-	Headers        []SubscriptionHeader    `json:"headers"`
-	RefreshHours   int                     `json:"refreshHours" example:"24"`
-	LastFetched    string                  `json:"lastFetched"`
-	LastError      string                  `json:"lastError,omitempty"`
-	SelectorTag    string                  `json:"selectorTag" example:"sub-abc12345"`
-	InboundTag     string                  `json:"inboundTag" example:"sub-abc12345-in"`
-	ListenPort     int                     `json:"listenPort" example:"11080"`
-	MemberTags     []string                `json:"memberTags"`
-	Members        []SubscriptionMemberDTO `json:"members"`
-	OrphanTags     []string                `json:"orphanTags"`
-	ActiveMember   string                  `json:"activeMember" example:"sub-abc-aaaa"`
-	Enabled        bool                    `json:"enabled"`
+	ID           string                  `json:"id" example:"abc123"`
+	Label        string                  `json:"label" example:"Provider X"`
+	URL          string                  `json:"url" example:"https://prov.example/sub/a"`
+	Headers      []SubscriptionHeader    `json:"headers"`
+	RefreshHours int                     `json:"refreshHours" example:"24"`
+	LastFetched  string                  `json:"lastFetched"`
+	LastError    string                  `json:"lastError,omitempty"`
+	SelectorTag  string                  `json:"selectorTag" example:"sub-abc12345"`
+	InboundTag   string                  `json:"inboundTag" example:"sub-abc12345-in"`
+	ListenPort   int                     `json:"listenPort" example:"11080"`
+	MemberTags   []string                `json:"memberTags"`
+	Members      []SubscriptionMemberDTO `json:"members"`
+	OrphanTags   []string                `json:"orphanTags"`
+	ActiveMember string                  `json:"activeMember" example:"sub-abc-aaaa"`
+	Enabled      bool                    `json:"enabled"`
 }
 
 // SubscriptionHeader is a single custom HTTP header for the fetch request.
@@ -120,21 +119,21 @@ func toSubscriptionDTO(s subscription.Subscription) SubscriptionDTO {
 		}
 	}
 	return SubscriptionDTO{
-		ID:             s.ID,
-		Label:          s.Label,
-		URL:            s.URL,
-		Headers:        hh,
-		RefreshHours:   s.RefreshHours,
-		LastFetched:    last,
-		LastError:      s.LastError,
-		SelectorTag:    s.SelectorTag,
-		InboundTag:     s.InboundTag,
-		ListenPort:     int(s.ListenPort),
-		MemberTags:     memberTags,
-		Members:        memberDTOs,
-		OrphanTags:     orphans,
-		ActiveMember:   s.ActiveMember,
-		Enabled:        s.Enabled,
+		ID:           s.ID,
+		Label:        s.Label,
+		URL:          s.URL,
+		Headers:      hh,
+		RefreshHours: s.RefreshHours,
+		LastFetched:  last,
+		LastError:    s.LastError,
+		SelectorTag:  s.SelectorTag,
+		InboundTag:   s.InboundTag,
+		ListenPort:   int(s.ListenPort),
+		MemberTags:   memberTags,
+		Members:      memberDTOs,
+		OrphanTags:   orphans,
+		ActiveMember: s.ActiveMember,
+		Enabled:      s.Enabled,
 	}
 }
 
@@ -260,15 +259,14 @@ func (h *SubscriptionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, toSubscriptionDTO(*sub))
 }
 
-// Delete handles DELETE /api/singbox/subscriptions/delete?id=&cascade=
+// Delete handles DELETE /api/singbox/subscriptions/delete?id=  Always performs full cleanup (no cascade flag).
 func (h *SubscriptionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		response.MethodNotAllowed(w)
 		return
 	}
 	id := r.URL.Query().Get("id")
-	cascade, _ := strconv.ParseBool(r.URL.Query().Get("cascade"))
-	if err := h.svc.Delete(r.Context(), id, cascade); err != nil {
+	if err := h.svc.Delete(r.Context(), id); err != nil {
 		response.InternalError(w, err.Error())
 		return
 	}

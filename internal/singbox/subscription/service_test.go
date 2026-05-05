@@ -176,44 +176,52 @@ func TestService_Create_RegistersNDMSProxy(t *testing.T) {
 	}
 }
 
-func TestService_Delete_RemovesProxy(t *testing.T) {
+func TestService_Delete_AlwaysCleansEverything(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("vless://3a3b1c2e-9999-4321-aaaa-1234567890ab@example.com:443?security=tls&sni=h\n"))
+		w.Write([]byte("vless://3a3b1c2e-9999-4321-aaaa-1234567890ab@example.com:443?security=tls&sni=h\n" +
+			"trojan://p@example.com:444?security=tls&sni=h\n"))
 	}))
 	defer srv.Close()
 
 	store, _ := NewStore(filepath.Join(t.TempDir(), "sub.json"))
 	mutator := &fakeMutator{}
 	svc := NewService(store, mutator)
+	sub, err := svc.Create(context.Background(), CreateInput{Label: "x", URL: srv.URL, Enabled: true})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
 
-	sub, _ := svc.Create(context.Background(), CreateInput{Label: "test", URL: srv.URL, Enabled: true})
-	if err := svc.Delete(context.Background(), sub.ID, true); err != nil {
+	if err := svc.Delete(context.Background(), sub.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if len(mutator.removedProxies) != 1 {
-		t.Errorf("expected 1 RemoveProxy call, got %d", len(mutator.removedProxies))
-	}
-}
 
-func TestService_Delete_RemovesMembersAndInbound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("vless://3a3b1c2e-9999-4321-aaaa-1234567890ab@example.com:443?security=tls&sni=h\n"))
-	}))
-	defer srv.Close()
-
-	store, _ := NewStore(filepath.Join(t.TempDir(), "sub.json"))
-	mutator := &fakeMutator{}
-	svc := NewService(store, mutator)
-	sub, _ := svc.Create(context.Background(), CreateInput{Label: "test", URL: srv.URL, Enabled: true})
-
-	if err := svc.Delete(context.Background(), sub.ID, true); err != nil {
-		t.Fatalf("Delete: %v", err)
+	// ProxyN must always be removed (this is the bug-fix).
+	if len(mutator.removedProxies) != 1 || mutator.removedProxies[0] != sub.ProxyIndex {
+		t.Errorf("RemoveProxy not called with subscription's index: %v (want %d)",
+			mutator.removedProxies, sub.ProxyIndex)
 	}
-	if len(mutator.removedOutbounds) < 2 { // selector + at least 1 member
-		t.Errorf("expected >=2 outbounds removed, got %d", len(mutator.removedOutbounds))
+	// Mixed inbound removed.
+	foundInbound := false
+	for _, t2 := range mutator.removedInbounds {
+		if t2 == sub.InboundTag {
+			foundInbound = true
+			break
+		}
 	}
-	if len(mutator.removedInbounds) != 1 {
-		t.Errorf("expected 1 inbound removed, got %d", len(mutator.removedInbounds))
+	if !foundInbound {
+		t.Errorf("expected inbound %s removed, got %v", sub.InboundTag, mutator.removedInbounds)
+	}
+	// Selector + at least 2 members removed.
+	if len(mutator.removedOutbounds) < 3 {
+		t.Errorf("expected >=3 outbounds removed (selector+2 members), got %d", len(mutator.removedOutbounds))
+	}
+	// Route rule removed.
+	if mutator.removedRules < 1 {
+		t.Errorf("expected route rule removed, got %d", mutator.removedRules)
+	}
+	// Subscription absent from storage.
+	if _, err := store.Get(sub.ID); err == nil {
+		t.Errorf("expected subscription removed from store, still present")
 	}
 }
 
