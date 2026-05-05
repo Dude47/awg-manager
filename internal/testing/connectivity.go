@@ -101,7 +101,7 @@ func (s *Service) checkHTTP(ctx context.Context, tunnelID string) (*Connectivity
 	}
 
 	if httpCode == 204 {
-		s.appLog.Info("http-check", tunnelID, fmt.Sprintf("HTTP check successful: code=204, latency=%dms", latencyMs))
+		s.appLog.Debug("http-check", tunnelID, fmt.Sprintf("HTTP check successful: code=204, latency=%dms", latencyMs))
 		return &ConnectivityResult{Connected: true, Latency: &latencyMs}, nil
 	}
 
@@ -153,11 +153,11 @@ func (s *Service) checkPing(ctx context.Context, tunnelID string, stored *storag
 		// If no latency parsed but exit code is 0, ping succeeded — return minimal latency
 		// This happens with busybox ping which may not output timing info
 		s.appLog.Full("ping-check", tunnelID, fmt.Sprintf("Ping exit code 0 but no timing output - stdout='%s', stderr='%s'", result.Stdout, result.Stderr))
-		s.appLog.Info("ping-check", tunnelID, fmt.Sprintf("Ping successful (no latency parsed): target=%s", target))
+		s.appLog.Debug("ping-check", tunnelID, fmt.Sprintf("Ping successful (no latency parsed): target=%s", target))
 		return &ConnectivityResult{Connected: true, Latency: intPtr(1)}, nil
 	}
 
-	s.appLog.Info("ping-check", tunnelID, fmt.Sprintf("Ping successful: target=%s, latency=%dms", target, *latency))
+	s.appLog.Debug("ping-check", tunnelID, fmt.Sprintf("Ping successful: target=%s, latency=%dms", target, *latency))
 	return &ConnectivityResult{Connected: true, Latency: latency}, nil
 }
 
