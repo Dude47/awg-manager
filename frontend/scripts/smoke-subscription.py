@@ -21,24 +21,64 @@ def main() -> int:
         browser = p.chromium.launch(headless=HEADLESS)
         page = browser.new_page(viewport={"width": 1600, "height": 900})
         try:
-            print("[smoke-sub] navigate /subscriptions")
-            page.goto(f"{BASE}/subscriptions")
+            print("[smoke-sub] navigate / and switch to Подписки tab")
+            page.goto(f"{BASE}/")
             page.wait_for_load_state("networkidle")
 
-            print("[smoke-sub] click + Добавить")
-            page.locator("a, button").filter(has_text="Добавить").first.click()
-            page.wait_for_url("**/subscriptions/new", timeout=5000)
+            # The Tabs component renders a hidden measure-row (aria-hidden) and a
+            # visible tab-row. get_by_role excludes aria-hidden children.
+            page.get_by_role("button", name="Подписки").click()
+            page.wait_for_timeout(300)
+
+            print("[smoke-sub] click + Добавить подписку")
+            page.get_by_role("button", name="Добавить подписку").click()
+            page.wait_for_timeout(300)
 
             print("[smoke-sub] fill form")
             page.locator('input[type="text"]').first.fill("Test Sub")
             page.locator('input[type="url"]').first.fill("https://example.com/sub")
-            page.locator('button[type="submit"]').click()
+            page.get_by_role("button", name="Создать").click()
 
             print("[smoke-sub] await detail page")
             page.wait_for_url("**/subscriptions/sub-*", timeout=10000)
 
             print("[smoke-sub] verify selector tag visible")
             page.wait_for_selector('text=/sub-/', timeout=5000)
+
+            # Active member surfacing on Sing-box tab + in-card swap
+            print("[smoke-sub] navigate to / and switch to Sing-box tab")
+            page.goto(f"{BASE}/")
+            page.wait_for_load_state("networkidle")
+
+            # get_by_role respects aria-hidden, so the measure-row duplicate is excluded.
+            page.get_by_role("button", name="Sing-box").click()
+            page.wait_for_timeout(500)
+
+            print("[smoke-sub] verify SubscriptionActiveCard rendered")
+            page.wait_for_selector("text=/Подписки — активные/", timeout=5000)
+            page.wait_for_selector("text=/Provider Demo/", timeout=5000)
+
+            print("[smoke-sub] open server picker on Provider Demo card")
+            page.locator(".server-btn").first.click()
+            page.wait_for_timeout(300)
+
+            print("[smoke-sub] popover opens with member rows")
+            popover = page.locator(".popover")
+            popover.wait_for(state="visible", timeout=3000)
+
+            rows = popover.locator(".row")
+            total_rows = rows.count()
+            if total_rows < 2:
+                raise AssertionError(f"expected >= 2 member rows in popover, got {total_rows}")
+
+            # Pick the second member (index 1; index 0 is the active one).
+            rows.nth(1).click()
+
+            print("[smoke-sub] popover closes after pick")
+            popover.wait_for(state="hidden", timeout=5000)
+
+            print("[smoke-sub] active member updated on card")
+            page.wait_for_timeout(500)  # let store refetch settle
 
             print("[smoke-sub] OK")
         except Exception as e:
