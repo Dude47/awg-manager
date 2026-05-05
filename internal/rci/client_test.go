@@ -7,7 +7,38 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/hoaxisr/awg-manager/internal/logging"
 )
+
+// recordedEntry captures a single log call for assertions.
+type recordedEntry struct {
+	level    logging.Level
+	group    string
+	subgroup string
+	action   string
+	target   string
+	message  string
+}
+
+// recordingLogger implements logging.AppLogger by storing every call.
+// Goroutine-safe is unnecessary — tests are sequential.
+type recordingLogger struct {
+	entries []recordedEntry
+}
+
+func (r *recordingLogger) AppLog(level logging.Level, group, subgroup, action, target, message string) {
+	r.entries = append(r.entries, recordedEntry{level, group, subgroup, action, target, message})
+}
+
+// newTestClientWithLogger is like newTestClient but wires a recorder so log
+// emissions are observable.
+func newTestClientWithLogger(handler http.Handler) (*Client, *httptest.Server, *recordingLogger) {
+	c, srv := newTestClient(handler)
+	rec := &recordingLogger{}
+	c.SetAppLogger(rec)
+	return c, srv, rec
+}
 
 func newTestClient(handler http.Handler) (*Client, *httptest.Server) {
 	srv := httptest.NewServer(handler)
