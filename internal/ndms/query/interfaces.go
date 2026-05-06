@@ -230,16 +230,22 @@ func (s *InterfaceStore) HasIPv6Global(ctx context.Context, name string) bool {
 
 // ResolveSystemName returns the kernel interface name (e.g. "nwg0")
 // for an NDMS id (e.g. "Wireguard0"). Reads from the cached snapshot
-// when possible — no HTTP on the hot path.
+// when possible — no HTTP on the hot path after first resolution.
 //
-// Fallback: NDMS `/show/interface/` (list) does not always populate
-// the `interface-name` field — system Wireguard tunnels in particular
-// come back with an empty kernel-name in the list view, but the
-// dedicated `/show/interface/system-name?name=X` resolver always
-// returns the correct mapping. When the cached SystemName is empty,
-// probe the resolver once and memoise the result on the cached entry.
-// The resolver does not 404 on missing names (returns an empty
-// string), so no router-syslog noise is added.
+// NDMS list response (`/show/interface/`) populates the
+// `interface-name` field for each entry, but the value is unreliable:
+// for Wireguard system tunnels (and likely other types) NDMS echoes
+// the NDMS id back instead of the kernel name. Verified against
+// production: list-response says `interface-name: "Wireguard0"`,
+// per-name detail says the same, but `/show/interface/system-name?
+// name=Wireguard0` returns the kernel name `"nwg0"`. The resolver is
+// the only authoritative source.
+//
+// We treat the cached SystemName as garbage when it's empty OR when
+// it equals the NDMS id (which signals NDMS handed us its own input
+// back). Garbage triggers a one-shot resolver probe, memoised on the
+// cached entry. The resolver does not 404 on missing names (returns
+// an empty string), so no router-syslog noise is added.
 func (s *InterfaceStore) ResolveSystemName(ctx context.Context, ndmsName string) string {
 	if ndmsName == "" {
 		return ""
@@ -248,16 +254,19 @@ func (s *InterfaceStore) ResolveSystemName(ctx context.Context, ndmsName string)
 		return ""
 	}
 	s.mu.RLock()
-	iface, ok := s.byID[ndmsName]
-	if ok && iface.SystemName != "" {
-		name := iface.SystemName
-		s.mu.RUnlock()
-		return name
+	var sysName string
+	if iface, ok := s.byID[ndmsName]; ok {
+		sysName = iface.SystemName
 	}
 	s.mu.RUnlock()
 
-	// Cached entry missing or has empty SystemName — fall back to the
-	// dedicated NDMS resolver endpoint and memoise the result.
+	// Trustworthy cached value: non-empty AND distinct from the NDMS
+	// id we'd otherwise be querying for.
+	if sysName != "" && sysName != ndmsName {
+		return sysName
+	}
+
+	// Fallback: dedicated NDMS resolver endpoint.
 	resolved := s.fetchSystemName(ctx, ndmsName)
 	if resolved == "" {
 		return ""
@@ -317,7 +326,9 @@ func (s *InterfaceStore) List(ctx context.Context) ([]ndms.Interface, error) {
 
 // ListWAN returns public-facing WAN interfaces filtered for ISP use.
 // Mirrors the legacy filter logic; reads everything from the cached
-// snapshot.
+// snapshot. Uses ResolveSystemName for kernel-name lookup so the
+// fallback resolver kicks in when `interface-name` from the list
+// response is unreliable (see ResolveSystemName for details).
 func (s *InterfaceStore) ListWAN(ctx context.Context) ([]wan.Interface, error) {
 	all, err := s.List(ctx)
 	if err != nil {
@@ -328,14 +339,17 @@ func (s *InterfaceStore) ListWAN(ctx context.Context) ([]wan.Interface, error) {
 		if iface.SecurityLevel != "public" {
 			continue
 		}
-		if IsNonISPInterface(iface.SystemName) {
+		kernelName := s.ResolveSystemName(ctx, iface.ID)
+		if kernelName == "" {
+			kernelName = iface.SystemName
+		}
+		if IsNonISPInterface(kernelName) {
 			continue
 		}
-		kernelName := iface.SystemName
 		out = append(out, wan.Interface{
 			Name:     kernelName,
 			ID:       iface.ID,
-			Label:    wanInterfaceLabel(iface.Type, iface.SystemName, iface.Description),
+			Label:    wanInterfaceLabel(iface.Type, kernelName, iface.Description),
 			Up:       iface.State == "up" && iface.IPv4 == "running",
 			Priority: iface.Priority,
 		})
@@ -345,7 +359,8 @@ func (s *InterfaceStore) ListWAN(ctx context.Context) ([]wan.Interface, error) {
 
 // ListAll returns ALL router interfaces (no security-level filter),
 // dropping awg-manager's own kernel interfaces (opkgtun*, awgm*).
-// Sorted by Name for deterministic UI rendering.
+// Sorted by Name for deterministic UI rendering. Uses
+// ResolveSystemName for kernel-name lookup (see notes on ListWAN).
 func (s *InterfaceStore) ListAll(ctx context.Context) ([]ndms.AllInterface, error) {
 	all, err := s.List(ctx)
 	if err != nil {
@@ -353,15 +368,19 @@ func (s *InterfaceStore) ListAll(ctx context.Context) ([]ndms.AllInterface, erro
 	}
 	out := make([]ndms.AllInterface, 0, len(all))
 	for _, iface := range all {
-		if iface.SystemName == "" {
+		kernelName := s.ResolveSystemName(ctx, iface.ID)
+		if kernelName == "" {
+			kernelName = iface.SystemName
+		}
+		if kernelName == "" {
 			continue
 		}
-		if isOwnTunnel(iface.SystemName) {
+		if isOwnTunnel(kernelName) {
 			continue
 		}
 		out = append(out, ndms.AllInterface{
-			Name:  iface.SystemName,
-			Label: allInterfaceLabel(iface.Type, iface.SystemName, iface.Description),
+			Name:  kernelName,
+			Label: allInterfaceLabel(iface.Type, kernelName, iface.Description),
 			Up:    iface.State == "up" && iface.IPv4 == "running",
 		})
 	}

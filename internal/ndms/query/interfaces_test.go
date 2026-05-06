@@ -304,6 +304,38 @@ func TestInterfaceStore_ResolveSystemName_FallbackMemoised(t *testing.T) {
 	}
 }
 
+// Critical regression test for the production scenario: NDMS
+// /show/interface/ list response populates `interface-name` with the
+// NDMS id verbatim instead of the kernel name (verified on Keenetic
+// OS 5.x: `interface-name: "Wireguard0"` for Wireguard0 even though
+// the kernel device is `nwg0`). Bootstrap caches that garbage value;
+// ResolveSystemName must detect it and fall back to the dedicated
+// resolver. Without this, `curl --interface Wireguard0` runs against
+// a non-existent kernel device and system-tunnel monitoring reports
+// connection_failed for a perfectly working tunnel.
+func TestInterfaceStore_ResolveSystemName_FallbackWhenSystemNameEqualsID(t *testing.T) {
+	fg := newFakeGetter()
+	// Bootstrap WITH garbage interface-name (NDMS id echoed back).
+	fg.SetJSON(ifaceListPath, `{
+		"Wireguard0": {"id":"Wireguard0","interface-name":"Wireguard0","type":"Wireguard","state":"up","link":"up"}
+	}`)
+	// Resolver returns the actual kernel name.
+	fg.SetRaw("/show/interface/system-name?name=Wireguard0", []byte(`"nwg0"`))
+
+	s := NewInterfaceStore(fg, NopLogger())
+	got := s.ResolveSystemName(context.Background(), "Wireguard0")
+	if got != "nwg0" {
+		t.Errorf("garbage SystemName==ID: want fallback to nwg0, got %q", got)
+	}
+
+	// Subsequent calls memoised — only one resolver probe.
+	_ = s.ResolveSystemName(context.Background(), "Wireguard0")
+	_ = s.ResolveSystemName(context.Background(), "Wireguard0")
+	if calls := fg.Calls("/show/interface/system-name?name=Wireguard0"); calls != 1 {
+		t.Errorf("resolver must be probed once and memoised, got %d calls", calls)
+	}
+}
+
 // Resolver returns object form ({"result":"nwg0"}) on some firmware.
 func TestInterfaceStore_ResolveSystemName_FallbackObjectShape(t *testing.T) {
 	fg := newFakeGetter()
