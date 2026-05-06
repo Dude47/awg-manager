@@ -230,7 +230,16 @@ func (s *InterfaceStore) HasIPv6Global(ctx context.Context, name string) bool {
 
 // ResolveSystemName returns the kernel interface name (e.g. "nwg0")
 // for an NDMS id (e.g. "Wireguard0"). Reads from the cached snapshot
-// — no HTTP. Returns "" if id is empty or absent.
+// when possible — no HTTP on the hot path.
+//
+// Fallback: NDMS `/show/interface/` (list) does not always populate
+// the `interface-name` field — system Wireguard tunnels in particular
+// come back with an empty kernel-name in the list view, but the
+// dedicated `/show/interface/system-name?name=X` resolver always
+// returns the correct mapping. When the cached SystemName is empty,
+// probe the resolver once and memoise the result on the cached entry.
+// The resolver does not 404 on missing names (returns an empty
+// string), so no router-syslog noise is added.
 func (s *InterfaceStore) ResolveSystemName(ctx context.Context, ndmsName string) string {
 	if ndmsName == "" {
 		return ""
@@ -239,9 +248,53 @@ func (s *InterfaceStore) ResolveSystemName(ctx context.Context, ndmsName string)
 		return ""
 	}
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	iface, ok := s.byID[ndmsName]
+	if ok && iface.SystemName != "" {
+		name := iface.SystemName
+		s.mu.RUnlock()
+		return name
+	}
+	s.mu.RUnlock()
+
+	// Cached entry missing or has empty SystemName — fall back to the
+	// dedicated NDMS resolver endpoint and memoise the result.
+	resolved := s.fetchSystemName(ctx, ndmsName)
+	if resolved == "" {
+		return ""
+	}
+	s.mu.Lock()
 	if iface, ok := s.byID[ndmsName]; ok {
-		return iface.SystemName
+		iface.SystemName = resolved
+	}
+	s.mu.Unlock()
+	return resolved
+}
+
+// fetchSystemName queries `/show/interface/system-name?name=X`. NDMS
+// returns the kernel name as either a bare JSON string ("nwg0") or an
+// object ({"result":"nwg0"}). Returns "" on any error or empty body.
+func (s *InterfaceStore) fetchSystemName(ctx context.Context, ndmsName string) string {
+	raw, err := s.getter.GetRaw(ctx, "/show/interface/system-name?name="+ndmsName)
+	if err != nil {
+		return ""
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	if trimmed[0] == '"' {
+		var str string
+		if json.Unmarshal(trimmed, &str) == nil {
+			return str
+		}
+	}
+	if trimmed[0] == '{' {
+		var resp struct {
+			Result string `json:"result"`
+		}
+		if json.Unmarshal(trimmed, &resp) == nil {
+			return resp.Result
+		}
 	}
 	return ""
 }
@@ -361,37 +414,64 @@ func (s *InterfaceStore) OnDestroyed(id string) {
 }
 
 // OnLayerChanged handles iflayerchanged NDMS events. Patches the
-// layer-specific field on the cached interface. ctrl=running starts
-// the uptime clock; ctrl=disabled stops it.
+// layer-specific field on the cached interface, mapping NDMS layer-
+// state values (running/pending/disabled) to the field semantics each
+// caller expects.
+//
+// Naming systems do NOT line up across layers:
+//   - ConfLayer field uses NDMS layer-state words directly
+//     ("running" / "disabled" / "pending") — the JSON shape and the
+//     hook payload agree. Pass level through.
+//   - Link field uses kernel link-status words ("up" / "down"). The
+//     JSON `link` field is already mapped on the NDMS side; the hook
+//     payload speaks layer-state, so we map ourselves: running=up,
+//     anything else=down.
+//   - State field is the overall interface-up flag and tracks the
+//     ctrl layer the same way: running=up, anything else=down. ctrl
+//     also gates startedAt (the uptime clock).
+//
+// IPv4 / IPv6 layer events are accepted but currently produce no
+// field updates — the existing summary-layer fields aren't part of
+// any read path's hot loop yet. If they become hot, mirror the
+// running→up mapping.
 func (s *InterfaceStore) OnLayerChanged(id, layer, level string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	iface, ok := s.byID[id]
 	if !ok {
 		// Event for an interface we don't know — typically means we
-		// missed an ifcreated. Log and skip; bootstrap or a future
-		// command-side Invalidate will reconcile.
+		// missed an ifcreated. Skip; bootstrap or a future command-
+		// side Invalidate will reconcile.
 		return
 	}
 	switch layer {
 	case "conf":
 		iface.ConfLayer = level
 	case "link":
-		iface.Link = level
-	}
-	if layer == "ctrl" {
+		iface.Link = layerLevelToUpDown(level)
+	case "ctrl":
+		iface.State = layerLevelToUpDown(level)
 		switch level {
 		case "running":
 			s.startedAt[id] = time.Now()
 		case "disabled":
 			delete(s.startedAt, id)
 		}
+	case "ipv4":
+		// summary.layer.ipv4 maps the same way (running / pending /
+		// disabled). Stored as-is — IPv4 string field semantically
+		// IS layer-state, not up/down.
+		iface.IPv4 = level
 	}
 }
 
-// OnIPChanged handles ifipchanged NDMS events. Patches address /
-// state / connected fields.
-func (s *InterfaceStore) OnIPChanged(id, address string, up, connected bool) {
+// OnIPChanged handles ifipchanged NDMS events. Patches address only.
+// State is owned by the ctrl layer (see OnLayerChanged); Connected is
+// also a derived signal we don't trust from this hook payload alone
+// because the NDMS event-script forwarder doesn't always populate up/
+// connected fields, leading to spurious "down" / "no" overwrites of
+// genuinely running interfaces.
+func (s *InterfaceStore) OnIPChanged(id, address string, _, _ bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	iface, ok := s.byID[id]
@@ -401,16 +481,16 @@ func (s *InterfaceStore) OnIPChanged(id, address string, up, connected bool) {
 	if address != "" {
 		iface.Address = address
 	}
-	if connected {
-		iface.Connected = "yes"
-	} else {
-		iface.Connected = "no"
+}
+
+// layerLevelToUpDown maps NDMS layer-state words to kernel up/down.
+// "running" → "up"; everything else (pending, disabled, error, "") →
+// "down".
+func layerLevelToUpDown(level string) string {
+	if level == "running" {
+		return "up"
 	}
-	if up {
-		iface.State = "up"
-	} else {
-		iface.State = "down"
-	}
+	return "down"
 }
 
 // === Command-side write API (proactive refresh after a successful POST) ===

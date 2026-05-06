@@ -246,7 +246,7 @@ func TestInterfaceStore_ResolveSystemName_FromMap(t *testing.T) {
 	}
 }
 
-func TestInterfaceStore_ResolveSystemName_EmptyAndAbsent(t *testing.T) {
+func TestInterfaceStore_ResolveSystemName_EmptyInputAndUnknownAbsent(t *testing.T) {
 	fg := newFakeGetter()
 	fg.SetJSON(ifaceListPath, sampleIfaceList)
 	s := NewInterfaceStore(fg, NopLogger())
@@ -254,8 +254,67 @@ func TestInterfaceStore_ResolveSystemName_EmptyAndAbsent(t *testing.T) {
 	if got := s.ResolveSystemName(context.Background(), ""); got != "" {
 		t.Errorf("empty input: want empty, got %q", got)
 	}
+	// Absent name AND no fallback resolver fixture: returns "".
 	if got := s.ResolveSystemName(context.Background(), "OpkgTun10"); got != "" {
-		t.Errorf("absent: want empty, got %q", got)
+		t.Errorf("absent without resolver fixture: want empty, got %q", got)
+	}
+}
+
+// Critical regression test: NDMS /show/interface/ list response does
+// NOT always populate `interface-name` (notably for Wireguard system
+// tunnels — confirmed on Keenetic OS 5.x). When the cached SystemName
+// is empty, ResolveSystemName must fall back to the dedicated
+// /show/interface/system-name resolver endpoint and return the kernel
+// name. Otherwise system-tunnel monitoring picks the NDMS id
+// (e.g. "Wireguard0") as the kernel interface name, and `curl
+// --interface Wireguard0` fails with "no such device".
+func TestInterfaceStore_ResolveSystemName_FallbackOnEmptyCachedName(t *testing.T) {
+	fg := newFakeGetter()
+	// Bootstrap snapshot WITHOUT interface-name field (mirrors what
+	// NDMS actually returns for system Wireguard tunnels in list view).
+	fg.SetJSON(ifaceListPath, `{
+		"Wireguard0": {"id":"Wireguard0","type":"Wireguard","state":"up"}
+	}`)
+	// Fallback resolver returns the kernel name.
+	fg.SetRaw("/show/interface/system-name?name=Wireguard0", []byte(`"nwg0"`))
+
+	s := NewInterfaceStore(fg, NopLogger())
+	got := s.ResolveSystemName(context.Background(), "Wireguard0")
+	if got != "nwg0" {
+		t.Errorf("fallback resolver: want nwg0, got %q", got)
+	}
+}
+
+// Fallback result must be memoised on the cached entry — second call
+// reads from the map without another HTTP probe.
+func TestInterfaceStore_ResolveSystemName_FallbackMemoised(t *testing.T) {
+	fg := newFakeGetter()
+	fg.SetJSON(ifaceListPath, `{
+		"Wireguard0": {"id":"Wireguard0","type":"Wireguard","state":"up"}
+	}`)
+	fg.SetRaw("/show/interface/system-name?name=Wireguard0", []byte(`"nwg0"`))
+	s := NewInterfaceStore(fg, NopLogger())
+
+	_ = s.ResolveSystemName(context.Background(), "Wireguard0")
+	_ = s.ResolveSystemName(context.Background(), "Wireguard0")
+	_ = s.ResolveSystemName(context.Background(), "Wireguard0")
+
+	if got := fg.Calls("/show/interface/system-name?name=Wireguard0"); got != 1 {
+		t.Errorf("fallback resolver must be probed once and memoised, got %d calls", got)
+	}
+}
+
+// Resolver returns object form ({"result":"nwg0"}) on some firmware.
+func TestInterfaceStore_ResolveSystemName_FallbackObjectShape(t *testing.T) {
+	fg := newFakeGetter()
+	fg.SetJSON(ifaceListPath, `{
+		"Wireguard0": {"id":"Wireguard0","type":"Wireguard","state":"up"}
+	}`)
+	fg.SetRaw("/show/interface/system-name?name=Wireguard0", []byte(`{"result":"nwg0"}`))
+	s := NewInterfaceStore(fg, NopLogger())
+
+	if got := s.ResolveSystemName(context.Background(), "Wireguard0"); got != "nwg0" {
+		t.Errorf("object-form resolver: want nwg0, got %q", got)
 	}
 }
 
@@ -447,16 +506,12 @@ func TestInterfaceStore_OnLayerChanged_PatchesInPlace(t *testing.T) {
 	_, _ = s.List(context.Background())
 	bootCalls := fg.Calls(ifaceListPath)
 
+	// conf layer state passes through (NDMS state machine and our
+	// ConfLayer field share semantics: "running" / "disabled" / "pending").
 	s.OnLayerChanged("Wireguard0", "conf", "disabled")
 	d, _ := s.GetDetails(context.Background(), "Wireguard0")
 	if d == nil || d.ConfLayer != "disabled" {
 		t.Errorf("conf disabled: want ConfLayer=disabled, got %#v", d)
-	}
-
-	s.OnLayerChanged("Wireguard0", "link", "down")
-	d, _ = s.GetDetails(context.Background(), "Wireguard0")
-	if d == nil || d.Link != "down" {
-		t.Errorf("link down: want Link=down, got %#v", d)
 	}
 
 	// No HTTP for in-place patches.
@@ -465,9 +520,57 @@ func TestInterfaceStore_OnLayerChanged_PatchesInPlace(t *testing.T) {
 	}
 }
 
-func TestInterfaceStore_OnLayerChanged_CtrlRunningStartsUptime(t *testing.T) {
+// Critical regression test for the link-layer mapping bug:
+// /show/interface/{name} JSON returns Link="up" / "down". NDMS hooks
+// for the link layer send level=running / pending / disabled. The
+// store must MAP between these — otherwise details.LinkUp() (which
+// checks Link=="up") returns false even when the link is up, blocking
+// the state matrix from resolving the tunnel as Running.
+func TestInterfaceStore_OnLayerChanged_LinkLayerMappedToUpDown(t *testing.T) {
 	fg := newFakeGetter()
-	// Bootstrap snapshot: interface present but uptime=0 (just created,
+	// Bootstrap with link="up" (kernel-style). After hook events the
+	// field must end up as "up" or "down", never "running"/"pending".
+	fg.SetJSON(ifaceListPath, sampleIfaceList)
+	s := NewInterfaceStore(fg, NopLogger())
+	_, _ = s.List(context.Background())
+
+	// Initially "up" from bootstrap.
+	d, _ := s.GetDetails(context.Background(), "Wireguard0")
+	if !d.LinkUp() {
+		t.Fatalf("after bootstrap with link=up: want LinkUp()=true, got Link=%q", d.Link)
+	}
+
+	// link=pending → mapped to Link="down" → LinkUp()=false
+	s.OnLayerChanged("Wireguard0", "link", "pending")
+	d, _ = s.GetDetails(context.Background(), "Wireguard0")
+	if d.LinkUp() {
+		t.Errorf("after link=pending: want LinkUp()=false, got Link=%q (must NOT be raw 'pending')", d.Link)
+	}
+	if d.Link != "down" {
+		t.Errorf("after link=pending: want Link='down', got %q", d.Link)
+	}
+
+	// link=running → mapped to Link="up" → LinkUp()=true
+	s.OnLayerChanged("Wireguard0", "link", "running")
+	d, _ = s.GetDetails(context.Background(), "Wireguard0")
+	if !d.LinkUp() {
+		t.Errorf("after link=running: want LinkUp()=true, got Link=%q", d.Link)
+	}
+	if d.Link != "up" {
+		t.Errorf("after link=running: want Link='up', got %q", d.Link)
+	}
+
+	// link=disabled → mapped to Link="down"
+	s.OnLayerChanged("Wireguard0", "link", "disabled")
+	d, _ = s.GetDetails(context.Background(), "Wireguard0")
+	if d.LinkUp() {
+		t.Errorf("after link=disabled: want LinkUp()=false, got Link=%q", d.Link)
+	}
+}
+
+func TestInterfaceStore_OnLayerChanged_CtrlSetsStateAndUptime(t *testing.T) {
+	fg := newFakeGetter()
+	// Bootstrap snapshot: interface present but state=down (just created,
 	// not running yet).
 	fg.SetJSON(ifaceListPath, `{
 		"OpkgTun10": {"id":"OpkgTun10","interface-name":"opkgtun10","type":"OpkgTun","state":"down","summary":{"layer":{"conf":"disabled"}}}
@@ -475,17 +578,27 @@ func TestInterfaceStore_OnLayerChanged_CtrlRunningStartsUptime(t *testing.T) {
 	s := NewInterfaceStore(fg, NopLogger())
 	_, _ = s.List(context.Background())
 
+	// ctrl=running → State="up" + uptime clock starts.
 	s.OnLayerChanged("OpkgTun10", "ctrl", "running")
 	time.Sleep(10 * time.Millisecond)
 	d, _ := s.GetDetails(context.Background(), "OpkgTun10")
 	if d == nil || d.Uptime < 0 || d.Uptime > 1 {
 		t.Errorf("after ctrl=running: want small Uptime, got %#v", d)
 	}
+	got, _ := s.Get(context.Background(), "OpkgTun10")
+	if got == nil || got.State != "up" {
+		t.Errorf("after ctrl=running: want State='up', got %#v", got)
+	}
 
+	// ctrl=disabled → State="down" + uptime=0.
 	s.OnLayerChanged("OpkgTun10", "ctrl", "disabled")
 	d, _ = s.GetDetails(context.Background(), "OpkgTun10")
 	if d == nil || d.Uptime != 0 {
 		t.Errorf("after ctrl=disabled: want Uptime=0, got %#v", d)
+	}
+	got, _ = s.Get(context.Background(), "OpkgTun10")
+	if got == nil || got.State != "down" {
+		t.Errorf("after ctrl=disabled: want State='down', got %#v", got)
 	}
 }
 
@@ -506,14 +619,26 @@ func TestInterfaceStore_OnLayerChanged_UnknownInterfaceIgnored(t *testing.T) {
 	}
 }
 
-func TestInterfaceStore_OnIPChanged_PatchesInPlace(t *testing.T) {
+func TestInterfaceStore_OnIPChanged_PatchesAddressOnly(t *testing.T) {
+	// OnIPChanged must NOT touch State or Connected — those are owned
+	// by the ctrl layer. The hook payload's `up`/`connected` flags are
+	// not always populated by the NDMS event-script forwarder, and a
+	// spurious "down"/"no" overwrite of an actually-running interface
+	// blocks the state matrix.
 	fg := newFakeGetter()
 	fg.SetJSON(ifaceListPath, sampleIfaceList)
 	s := NewInterfaceStore(fg, NopLogger())
 	_, _ = s.List(context.Background())
 	bootCalls := fg.Calls(ifaceListPath)
 
-	s.OnIPChanged("Wireguard0", "192.168.5.5", true, true)
+	// Bootstrap baseline.
+	pre, _ := s.Get(context.Background(), "Wireguard0")
+	preState := pre.State
+	preConnected := pre.Connected
+
+	// Hook with up=false, connected=false (default zero values when
+	// the forwarder doesn't fill them) MUST NOT corrupt State/Connected.
+	s.OnIPChanged("Wireguard0", "192.168.5.5", false, false)
 	got, _ := s.Get(context.Background(), "Wireguard0")
 	if got == nil {
 		t.Fatalf("expected Wireguard0 still present")
@@ -521,11 +646,11 @@ func TestInterfaceStore_OnIPChanged_PatchesInPlace(t *testing.T) {
 	if got.Address != "192.168.5.5" {
 		t.Errorf("Address: want 192.168.5.5, got %q", got.Address)
 	}
-	if got.State != "up" {
-		t.Errorf("State: want up, got %q", got.State)
+	if got.State != preState {
+		t.Errorf("State must be preserved: was %q, became %q", preState, got.State)
 	}
-	if got.Connected != "yes" {
-		t.Errorf("Connected: want yes, got %q", got.Connected)
+	if got.Connected != preConnected {
+		t.Errorf("Connected must be preserved: was %q, became %q", preConnected, got.Connected)
 	}
 
 	// No HTTP.
