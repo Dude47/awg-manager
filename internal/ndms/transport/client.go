@@ -79,7 +79,8 @@ func (c *Client) Post(ctx context.Context, payload any) (json.RawMessage, error)
 }
 
 // PostBatch sends commands as a JSON array via POST /. Returns one raw
-// response per command in the same order.
+// response per command in the same order. Per-element NDMS error envelopes
+// trigger a *BatchError aggregating all failures.
 func (c *Client) PostBatch(ctx context.Context, commands []any) ([]json.RawMessage, error) {
 	raw, err := c.postJSON(ctx, commands)
 	if err != nil {
@@ -88,6 +89,21 @@ func (c *Client) PostBatch(ctx context.Context, commands []any) ([]json.RawMessa
 	var results []json.RawMessage
 	if err := json.Unmarshal(raw, &results); err != nil {
 		return nil, fmt.Errorf("rci batch: decode array: %w", err)
+	}
+
+	// Per-element envelope check. Each element of the array may carry the
+	// NDMS error envelope independently — silent partial failures must not
+	// slip through.
+	var failures []BatchElementError
+	for i, elem := range results {
+		if msg := ExtractError(elem); msg != "" {
+			failures = append(failures, BatchElementError{Index: i, Message: msg})
+		}
+	}
+	if len(failures) > 0 {
+		c.appLog.Warn("POST", "/",
+			fmt.Sprintf("batch ndms-errors: %d/%d failed", len(failures), len(results)))
+		return results, &BatchError{Failures: failures, Total: len(results), Body: raw}
 	}
 	return results, nil
 }
@@ -130,6 +146,13 @@ func (c *Client) postJSON(ctx context.Context, payload any) (json.RawMessage, er
 		c.appLog.Error("POST", "/", fmt.Sprintf("status %d", resp.StatusCode))
 		return nil, &HTTPError{Method: "POST", Path: "/", Status: resp.StatusCode, Body: data}
 	}
+
+	// NDMS returns HTTP 200 even on application errors — check body envelope.
+	if msg := ExtractError(data); msg != "" {
+		c.appLog.Warn("POST", "/", fmt.Sprintf("ndms-error: %s", msg))
+		return data, &NDMSAppError{Method: "POST", Path: "/", Message: msg, Body: data}
+	}
+
 	return json.RawMessage(data), nil
 }
 
