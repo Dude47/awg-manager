@@ -33,6 +33,10 @@
             goto(`?${sp.toString()}`, { replaceState: true });
         }
         unsubRouting = subscribeRouting();
+        // Prime sing-box router status so the tab badge count is correct
+        // immediately on page load instead of waiting for the next polling
+        // tick after the user actually clicks into the sing-box sub-tab.
+        void singboxRouterStore.reloadStatus();
     });
     onDestroy(() => {
         unsubRouting?.();
