@@ -162,9 +162,54 @@ func TestEnsureSystemRules(t *testing.T) {
 	}
 }
 
+func TestCompositeOutboundRejectsDirectMember(t *testing.T) {
+	cfg := NewEmptyConfig()
+
+	// Add: direct as member rejected.
+	err := cfg.AddCompositeOutbound(Outbound{Tag: "auto", Type: "urltest", Outbounds: []string{"awg10", "direct"}})
+	if err == nil || !contains(err.Error(), "not allowed in composite groups") {
+		t.Errorf("expected 'not allowed' error for direct member, got %v", err)
+	}
+
+	// Add: case-insensitive direct also rejected.
+	err = cfg.AddCompositeOutbound(Outbound{Tag: "auto", Type: "urltest", Outbounds: []string{"awg10", "Direct"}})
+	if err == nil {
+		t.Error("expected case-insensitive direct to be rejected")
+	}
+
+	// Add: direct as default rejected.
+	err = cfg.AddCompositeOutbound(Outbound{Tag: "auto", Type: "selector", Outbounds: []string{"awg10"}, Default: "direct"})
+	if err == nil || !contains(err.Error(), "default") {
+		t.Errorf("expected 'default' error for direct default, got %v", err)
+	}
+
+	// Empty members rejected.
+	err = cfg.AddCompositeOutbound(Outbound{Tag: "auto", Type: "urltest"})
+	if err == nil || !contains(err.Error(), "at least one member") {
+		t.Errorf("expected 'at least one member' error, got %v", err)
+	}
+
+	// Empty tag rejected.
+	err = cfg.AddCompositeOutbound(Outbound{Tag: "", Type: "selector", Outbounds: []string{"awg10"}})
+	if err == nil || !contains(err.Error(), "tag is required") {
+		t.Errorf("expected 'tag is required' error, got %v", err)
+	}
+
+	// Valid composite accepted.
+	if err := cfg.AddCompositeOutbound(Outbound{Tag: "auto", Type: "urltest", Outbounds: []string{"awg10", "awg20"}}); err != nil {
+		t.Fatalf("valid composite rejected: %v", err)
+	}
+
+	// Update: same validation applies.
+	err = cfg.UpdateCompositeOutbound("auto", Outbound{Tag: "auto", Type: "urltest", Outbounds: []string{"direct"}})
+	if err == nil {
+		t.Error("expected Update with direct member to be rejected")
+	}
+}
+
 func TestCompositeOutboundTagConflict(t *testing.T) {
 	cfg := NewEmptyConfig()
-	o := Outbound{Type: "urltest", Tag: "fast"}
+	o := Outbound{Type: "urltest", Tag: "fast", Outbounds: []string{"awg10", "awg20"}}
 	if err := cfg.AddCompositeOutbound(o); err != nil {
 		t.Fatal(err)
 	}

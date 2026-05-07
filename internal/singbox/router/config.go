@@ -204,6 +204,9 @@ func (c *RouterConfig) EnsureSystemRules() {
 }
 
 func (c *RouterConfig) AddCompositeOutbound(o Outbound) error {
+	if err := validateCompositeOutbound(o); err != nil {
+		return err
+	}
 	for _, existing := range c.Outbounds {
 		if existing.Tag == o.Tag {
 			return fmt.Errorf("%w: %q", ErrOutboundTagConflict, o.Tag)
@@ -214,6 +217,9 @@ func (c *RouterConfig) AddCompositeOutbound(o Outbound) error {
 }
 
 func (c *RouterConfig) UpdateCompositeOutbound(tag string, o Outbound) error {
+	if err := validateCompositeOutbound(o); err != nil {
+		return err
+	}
 	for i, existing := range c.Outbounds {
 		if existing.Tag == tag {
 			c.Outbounds[i] = o
@@ -221,6 +227,29 @@ func (c *RouterConfig) UpdateCompositeOutbound(tag string, o Outbound) error {
 		}
 	}
 	return fmt.Errorf("%w: %q not found", ErrOutboundTagConflict, tag)
+}
+
+// validateCompositeOutbound rejects shapes that compile but produce
+// surprising behavior at runtime. In particular `direct` as a member of
+// a selector/urltest/loadbalance group lets traffic bypass the proxy
+// silently — almost never what the user wants, and a known footgun in
+// sing-box composite groups. Same for `default: "direct"`.
+func validateCompositeOutbound(o Outbound) error {
+	if strings.TrimSpace(o.Tag) == "" {
+		return fmt.Errorf("outbound tag is required")
+	}
+	if len(o.Outbounds) == 0 {
+		return fmt.Errorf("outbound %q: at least one member is required", o.Tag)
+	}
+	for _, m := range o.Outbounds {
+		if strings.EqualFold(strings.TrimSpace(m), "direct") {
+			return fmt.Errorf("outbound %q: member %q is not allowed in composite groups (would bypass proxy silently)", o.Tag, m)
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(o.Default), "direct") {
+		return fmt.Errorf("outbound %q: default %q is not allowed in composite groups", o.Tag, o.Default)
+	}
+	return nil
 }
 
 func (c *RouterConfig) DeleteCompositeOutbound(tag string, force bool) error {
