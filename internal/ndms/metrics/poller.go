@@ -51,7 +51,8 @@ type Poller struct {
 	// interface is observed with zero peers, we skip polling it for
 	// emptyCooldown — no point hitting NDMS every 5s for an empty
 	// server (e.g. one freshly created with no clients added yet).
-	// Invalidate<All>() clears this map whenever the list of peers is refreshed.
+	// Cooldown is self-clearing: when it elapses we re-probe, and
+	// any non-empty result removes the marker.
 	emptyUntil  map[string]time.Time
 	snapshotPub ServerSnapshotPublisher
 	history     HistoryFeeder
@@ -63,10 +64,13 @@ type Poller struct {
 }
 
 // emptyCooldown is how long an interface observed with zero peers is
-// skipped before being polled again. Ten seconds is short enough for
-// the UI to discover a newly-added peer without feeling laggy, and
-// long enough to slash RCI load for servers sitting idle.
-const emptyCooldown = 10 * time.Second
+// skipped before being polled again. One minute keeps RCI load low
+// for idle servers (NDMS responds 404 on /wireguard/peer when empty
+// and logs Core::Scgi::ThreadPool: not found on every hit) while
+// still bounding how long a freshly-added peer waits to appear in
+// metrics. Newly-added peers also surface via SSE on mutation, so
+// fast polling here is not what drives UI freshness.
+const emptyCooldown = 60 * time.Second
 
 // InterfaceRef names one interface to poll metrics for, plus its role.
 // IsServer switches the SSE event shape between tunnel:traffic (false)

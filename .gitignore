@@ -24,6 +24,11 @@ frontend/static/openapi.yaml
 # Planning & docs (internal only)
 docs/
 .planning/
+debug.md
+tree.md
+
+# Windows-only helper scripts (personal tooling — never commit)
+*.bat
 
 # Claude (all internal)
 .claude/
