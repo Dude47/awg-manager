@@ -27,7 +27,7 @@ func TestInstaller_Download_Success(t *testing.T) {
 	target := filepath.Join(dir, "sing-box")
 	inst := New(target, "test-arch", BinarySpec{Version: "1.13.11", URL: srv.URL, SHA256: hexSum}, nil)
 
-	tmp, err := inst.Download(context.Background())
+	tmp, err := inst.Download(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("Download err: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestInstaller_Download_SHAMismatch(t *testing.T) {
 	target := filepath.Join(dir, "sing-box")
 	inst := New(target, "test-arch", BinarySpec{Version: "1.13.11", URL: srv.URL, SHA256: "0000"}, nil)
 
-	if _, err := inst.Download(context.Background()); err == nil {
+	if _, err := inst.Download(context.Background(), nil); err == nil {
 		t.Fatal("expected SHA mismatch error, got nil")
 	}
 	if _, err := os.Stat(target + ".tmp"); !os.IsNotExist(err) {
@@ -68,7 +68,7 @@ func TestInstaller_Download_HTTPError(t *testing.T) {
 	target := filepath.Join(dir, "sing-box")
 	inst := New(target, "test-arch", BinarySpec{Version: "1.13.11", URL: srv.URL, SHA256: "0000"}, nil)
 
-	if _, err := inst.Download(context.Background()); err == nil {
+	if _, err := inst.Download(context.Background(), nil); err == nil {
 		t.Fatal("expected error on 404, got nil")
 	}
 	if _, err := os.Stat(target + ".tmp"); !os.IsNotExist(err) {
@@ -160,7 +160,7 @@ func TestInstaller_Download_ContextCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	if _, err := inst.Download(ctx); err == nil {
+	if _, err := inst.Download(ctx, nil); err == nil {
 		t.Fatal("expected error on cancelled context, got nil")
 	}
 	if _, err := os.Stat(target + ".tmp"); !os.IsNotExist(err) {

@@ -671,6 +671,18 @@ func main() {
 			singboxInstaller := installer.New(installer.DefaultBinaryPath, arch, spec, loggingService)
 			singboxOp.SetInstaller(singboxInstaller)
 
+			// Stream sing-box install/update lifecycle over SSE so the UI
+			// can render a live progress bar instead of a blocking spinner.
+			singboxOp.SetInstallProgressReporter(func(op, phase string, downloaded, total int64, errMsg string) {
+				eventBus.Publish("singbox:install-progress", events.SingboxInstallProgressEvent{
+					Op:         op,
+					Phase:      phase,
+					Downloaded: downloaded,
+					Total:      total,
+					Error:      errMsg,
+				})
+			})
+
 			// Auto-migration goroutine: when legacy sing-box-naive opkg
 			// package is present but managed binary is missing, run the
 			// jump from opkg → managed in the background. Failures keep

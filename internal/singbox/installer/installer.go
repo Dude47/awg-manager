@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/hoaxisr/awg-manager/internal/logging"
+	"github.com/hoaxisr/awg-manager/internal/sys/httpdownload"
 )
 
 // DefaultBinaryPath is where the managed sing-box binary is placed on disk.
@@ -73,7 +74,11 @@ func (i *Installer) RequiredVersion() string { return i.spec.Version }
 // On verification failure or HTTP error the tmp file is removed so the
 // caller does not activate corrupted contents. Returns the tmp path on
 // success.
-func (i *Installer) Download(ctx context.Context) (string, error) {
+// Download fetches the binary with optional throttled progress callbacks.
+// onProgress may be nil when no UI feedback is needed (e.g. early-boot
+// migrations). When provided, it receives cumulative byte counters and
+// the expected total (0 if Content-Length absent).
+func (i *Installer) Download(ctx context.Context, onProgress httpdownload.ProgressFn) (string, error) {
 	tmp := i.binaryPath + ".tmp"
 	if err := os.MkdirAll(filepath.Dir(i.binaryPath), 0755); err != nil {
 		return "", fmt.Errorf("mkdir %s: %w", filepath.Dir(i.binaryPath), err)
@@ -98,7 +103,8 @@ func (i *Installer) Download(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("create %s: %w", tmp, err)
 	}
 	hasher := sha256.New()
-	written, err := io.Copy(io.MultiWriter(out, hasher), resp.Body)
+	src := httpdownload.NewReader(resp.Body, resp.ContentLength, onProgress)
+	written, err := io.Copy(io.MultiWriter(out, hasher), src)
 	closeErr := out.Close()
 	if err != nil {
 		_ = os.Remove(tmp)

@@ -2,6 +2,8 @@
 	import type { SingboxStatus, HydraRouteStatus } from '$lib/types';
 	import { Button, Modal, StatusDot } from '$lib/components/ui';
 	import { copyToClipboard } from '$lib/utils/clipboard';
+	import { singboxInstallProgress } from '$lib/stores/singboxInstall';
+	import { formatBytes } from '$lib/utils/format';
 
 	interface Props {
 		singboxStatus: SingboxStatus | null;
@@ -33,6 +35,37 @@
 	const singboxRunning = $derived(singboxStatus?.running ?? false);
 	const hydraInstalled = $derived(hydraStatus?.installed ?? false);
 	const hydraRunning = $derived(hydraStatus?.running ?? false);
+
+	const installProgress = $derived($singboxInstallProgress);
+	const installPhaseLabel = $derived.by(() => {
+		const p = installProgress;
+		if (!p) return '';
+		switch (p.phase) {
+			case 'download':
+				if (p.total > 0) {
+					const pct = Math.min(100, Math.round((p.downloaded / p.total) * 100));
+					return `Скачивание ${pct}% (${formatBytes(p.downloaded)} / ${formatBytes(p.total)})`;
+				}
+				return `Скачивание (${formatBytes(p.downloaded)})`;
+			case 'activate':
+				return 'Установка…';
+			case 'stop':
+				return 'Остановка sing-box…';
+			case 'start':
+				return 'Запуск sing-box…';
+			case 'done':
+				return 'Готово';
+			case 'error':
+				return p.error ? `Ошибка: ${p.error}` : 'Ошибка';
+			default:
+				return '';
+		}
+	});
+	const installProgressPct = $derived.by(() => {
+		const p = installProgress;
+		if (!p || p.phase !== 'download' || p.total <= 0) return null;
+		return Math.min(100, Math.round((p.downloaded / p.total) * 100));
+	});
 
 	let errorModalOpen = $state(false);
 
@@ -99,7 +132,17 @@
 						{/if}
 					</div>
 				</div>
-				{#if singboxInstalled}
+				{#if installProgress}
+					<div class="progress-widget" class:progress-error={installProgress.phase === 'error'} class:progress-done={installProgress.phase === 'done'}>
+						<div class="progress-label">{installPhaseLabel}</div>
+						<div class="progress-bar" class:indeterminate={installProgressPct === null && installProgress.phase !== 'done' && installProgress.phase !== 'error'}>
+							<div
+								class="progress-fill"
+								style:width={installProgressPct !== null ? `${installProgressPct}%` : '100%'}
+							></div>
+						</div>
+					</div>
+				{:else if singboxInstalled}
 					<Button variant="ghost" size="sm" href="/?tab=singbox">Открыть</Button>
 				{:else if singboxStatusLoading}
 					<Button variant="ghost" size="sm" disabled>Ожидание…</Button>
@@ -225,5 +268,53 @@
 		word-break: break-word;
 		max-height: 50vh;
 		overflow: auto;
+	}
+
+	.progress-widget {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		min-width: 220px;
+	}
+	.progress-label {
+		font-size: 0.78rem;
+		color: var(--color-text-primary);
+		font-variant-numeric: tabular-nums;
+	}
+	.progress-bar {
+		position: relative;
+		height: 6px;
+		background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.08));
+		border-radius: 3px;
+		overflow: hidden;
+	}
+	.progress-fill {
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		background: var(--color-primary, #3b82f6);
+		transition: width 120ms ease-out;
+	}
+	.progress-bar.indeterminate .progress-fill {
+		background: linear-gradient(
+			90deg,
+			transparent 0%,
+			var(--color-primary, #3b82f6) 50%,
+			transparent 100%
+		);
+		background-size: 200% 100%;
+		animation: indeterminate-slide 1.2s linear infinite;
+		width: 100% !important;
+	}
+	.progress-widget.progress-error .progress-fill {
+		background: var(--color-error, #ef4444);
+	}
+	.progress-widget.progress-done .progress-fill {
+		background: var(--color-success, #10b981);
+	}
+	@keyframes indeterminate-slide {
+		0% { background-position: 200% 0; }
+		100% { background-position: -100% 0; }
 	}
 </style>

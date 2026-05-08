@@ -77,7 +77,7 @@ func (i *Installer) Migrate(ctx context.Context, lc Lifecycle) error {
 
 	i.appLog.Info("migrate", "", "starting auto-migration from sing-box-naive opkg package")
 
-	tmp, err := i.Download(ctx)
+	tmp, err := i.Download(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}

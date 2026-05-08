@@ -63,6 +63,14 @@ export interface GeoDownloadProgressEvent {
 	error?: string;
 }
 
+export interface SingboxInstallProgressEvent {
+	op: 'install' | 'update';
+	phase: 'download' | 'activate' | 'stop' | 'start' | 'done' | 'error';
+	downloaded: number;
+	total: number; // 0 when unknown
+	error?: string;
+}
+
 export interface DnsRouteFailoverEvent {
 	listId: string;
 	listName: string;
@@ -105,6 +113,9 @@ export interface SSEEventHandlers {
 
 	// HydraRoute geo download progress
 	onHydraRouteGeoProgress?: (data: GeoDownloadProgressEvent) => void;
+
+	// Sing-box install/update lifecycle progress
+	onSingboxInstallProgress?: (data: SingboxInstallProgressEvent) => void;
 
 	// DNS-route failover notification (user-visible toast)
 	onDnsRouteFailover?: (data: DnsRouteFailoverEvent) => void;
@@ -156,6 +167,9 @@ export function connectSSE(handlers: SSEEventHandlers): () => void {
 
 	// HydraRoute events
 	handle('hydraroute:geo-progress', handlers.onHydraRouteGeoProgress);
+
+	// Sing-box install/update progress
+	handle('singbox:install-progress', handlers.onSingboxInstallProgress);
 
 	// DNS-route failover
 	handle('dnsroute:failover', handlers.onDnsRouteFailover);

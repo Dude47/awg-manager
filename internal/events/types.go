@@ -112,6 +112,18 @@ type GeoDownloadProgressEvent struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// SingboxInstallProgressEvent reports lifecycle of an Install or Update
+// flow for the managed sing-box binary. Total may be 0 when the server
+// didn't send Content-Length. Byte counters are populated only for the
+// "download" phase; later phases report progress purely by name.
+type SingboxInstallProgressEvent struct {
+	Op         string `json:"op"`         // "install" | "update"
+	Phase      string `json:"phase"`      // "download"|"activate"|"stop"|"start"|"done"|"error"
+	Downloaded int64  `json:"downloaded"` // bytes received so far (download phase only)
+	Total      int64  `json:"total"`      // 0 when unknown
+	Error      string `json:"error,omitempty"`
+}
+
 // ResourceInvalidatedEvent is the single state-invalidation hint.
 // Replaces all per-resource state events (tunnel:state, server:updated,
 // routing:*-updated, singbox:status, singbox:tunnel, pingcheck:state,

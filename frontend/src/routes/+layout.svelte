@@ -10,6 +10,7 @@
 	import { api } from '$lib/api/client';
 	import { connectSSE } from '$lib/api/events';
 	import { geoDownloadProgress } from '$lib/stores/geoDownload';
+	import { singboxInstallProgress } from '$lib/stores/singboxInstall';
 	import { serverOnline } from '$lib/stores/events';
 	import { healthMonitor } from '$lib/stores/health';
 	import { tunnels } from '$lib/stores/tunnels';
@@ -153,6 +154,7 @@
 
 			// HydraRoute geo download progress
 			onHydraRouteGeoProgress: (data) => geoDownloadProgress.ingest(data),
+			onSingboxInstallProgress: (data) => singboxInstallProgress.ingest(data),
 
 			// DNS-route failover — user-visible notification, not a state stream
 			onDnsRouteFailover: (data) => {

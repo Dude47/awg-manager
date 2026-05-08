@@ -102,6 +102,11 @@ type Operator struct {
 	// installer still work for non-install-related code paths.
 	inst *installer.Installer
 
+	// installProgress is the optional reporter wired by the daemon to
+	// publish install/update lifecycle events over SSE. When nil, all
+	// reports are silently dropped (used by unit tests).
+	installProgress InstallProgressFn
+
 	// versionProbeMu guards cached output of `sing-box version`.
 	versionProbeMu       sync.Mutex
 	versionProbeValue    string
@@ -277,6 +282,20 @@ func (o *Operator) SetOrch(orch *orchestrator.Orchestrator) { o.orch = orch }
 // works without it for read-only paths; install/update/cleanup of the
 // managed binary requires it.
 func (o *Operator) SetInstaller(inst *installer.Installer) { o.inst = inst }
+
+// InstallProgressFn receives lifecycle events for an install/update flow.
+// op is "install" or "update". phase is one of "download", "activate",
+// "stop", "start", "done", "error". Byte counters are populated only
+// for the download phase. errMsg is set only for "error".
+type InstallProgressFn func(op, phase string, downloaded, total int64, errMsg string)
+
+// SetInstallProgressReporter wires a callback that receives Install/Update
+// lifecycle events. Optional — nil is safe (no reporting). The daemon
+// wires this to publish over the SSE event bus so the UI can render a
+// live progress bar.
+func (o *Operator) SetInstallProgressReporter(fn InstallProgressFn) {
+	o.installProgress = fn
+}
 
 // tunnelsFile is the canonical path for the tunnels.json fragment
 // (config.d/10-tunnels.json). Used by applyConfig + RemoveTunnel.
@@ -1069,13 +1088,25 @@ func (o *Operator) Install(ctx context.Context) error {
 	if o.inst == nil {
 		return fmt.Errorf("installer not wired")
 	}
-	tmp, err := o.inst.Download(ctx)
+	report := func(phase string, downloaded, total int64, errMsg string) {
+		if o.installProgress != nil {
+			o.installProgress("install", phase, downloaded, total, errMsg)
+		}
+	}
+	bytesProgress := func(downloaded, total int64) {
+		report("download", downloaded, total, "")
+	}
+	tmp, err := o.inst.Download(ctx, bytesProgress)
 	if err != nil {
+		report("error", 0, 0, err.Error())
 		return fmt.Errorf("download sing-box: %w", err)
 	}
+	report("activate", 0, 0, "")
 	if err := o.inst.Activate(tmp); err != nil {
+		report("error", 0, 0, err.Error())
 		return fmt.Errorf("activate sing-box: %w", err)
 	}
+	report("done", 0, 0, "")
 	return nil
 }
 
@@ -1089,17 +1120,29 @@ func (o *Operator) Update(ctx context.Context) error {
 	if o.inst.CurrentVersion(ctx) == o.inst.RequiredVersion() {
 		return nil
 	}
-	tmp, err := o.inst.Download(ctx)
+	report := func(phase string, downloaded, total int64, errMsg string) {
+		if o.installProgress != nil {
+			o.installProgress("update", phase, downloaded, total, errMsg)
+		}
+	}
+	bytesProgress := func(downloaded, total int64) {
+		report("download", downloaded, total, "")
+	}
+	tmp, err := o.inst.Download(ctx, bytesProgress)
 	if err != nil {
+		report("error", 0, 0, err.Error())
 		return fmt.Errorf("download sing-box: %w", err)
 	}
 	wasRunning, _ := o.proc.IsRunning()
 	if wasRunning {
+		report("stop", 0, 0, "")
 		if err := o.proc.Stop(); err != nil {
 			_ = os.Remove(tmp)
+			report("error", 0, 0, err.Error())
 			return fmt.Errorf("stop: %w", err)
 		}
 	}
+	report("activate", 0, 0, "")
 	if err := o.inst.Activate(tmp); err != nil {
 		// Activate already removed the tmp on failure; we now have an
 		// awkward state — daemon stopped, old binary still in place,
@@ -1110,13 +1153,17 @@ func (o *Operator) Update(ctx context.Context) error {
 				o.log.Warn("update: failed to restart after Activate error", "err", startErr)
 			}
 		}
+		report("error", 0, 0, err.Error())
 		return fmt.Errorf("activate: %w", err)
 	}
 	if wasRunning {
+		report("start", 0, 0, "")
 		if err := o.startAndWait(ctx); err != nil {
+			report("error", 0, 0, err.Error())
 			return fmt.Errorf("start: %w", err)
 		}
 	}
+	report("done", 0, 0, "")
 	return nil
 }
 
