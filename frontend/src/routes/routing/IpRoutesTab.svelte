@@ -51,7 +51,7 @@
     let boundRoutes = $derived(ipRoutes.filter(r => r.tunnelID));
     let ipActiveCount = $derived(boundRoutes.filter(r => r.enabled).length);
 
-    async function saveIpRoute(data: { name: string; tunnelID: string; subnets: string[]; fallback: '' | 'reject' }) {
+    async function saveIpRoute(data: { name: string; tunnelID: string; subnets: string[]; fallback: '' | 'reject'; iconUrl?: string }) {
         ipSaving = true;
         try {
             if (editingIpRoute) {
@@ -61,6 +61,7 @@
                     tunnelID: data.tunnelID,
                     subnets: data.subnets,
                     fallback: data.fallback,
+                    iconUrl: data.iconUrl,
                 });
                 notifications.success('IP-маршрут обновлён');
             } else {
@@ -69,6 +70,7 @@
                     tunnelID: data.tunnelID,
                     subnets: data.subnets,
                     fallback: data.fallback,
+                    iconUrl: data.iconUrl,
                     enabled: true,
                 });
                 notifications.success('IP-маршрут создан');
