@@ -49,10 +49,18 @@ type SubscriptionURLTestDTO struct {
 }
 
 // SubscriptionDTO mirrors subscription.Subscription for OpenAPI exposure.
+//
+// Inline content is deliberately NOT exposed: pasted share-links carry
+// the full server address + UUID/password and would otherwise leak into
+// every list-all response (i.e. every page load), browser DevTools, and
+// any reverse-proxy access log that records response bodies. Frontend
+// only needs IsInline to gate UI affordances; raw paste stays
+// server-side until a future single-record endpoint requires it.
 type SubscriptionDTO struct {
 	ID           string                  `json:"id" example:"abc123"`
 	Label        string                  `json:"label" example:"Provider X"`
 	URL          string                  `json:"url" example:"https://prov.example/sub/a"`
+	IsInline     bool                    `json:"isInline" example:"false"`
 	Headers      []SubscriptionHeader    `json:"headers"`
 	RefreshHours int                     `json:"refreshHours" example:"24"`
 	LastFetched  string                  `json:"lastFetched"`
@@ -89,9 +97,11 @@ type SubscriptionResponse struct {
 }
 
 // CreateSubscriptionRequest is the body for POST /api/singbox/subscriptions/create.
+// Exactly one of URL or Inline must be provided.
 type CreateSubscriptionRequest struct {
 	Label        string                  `json:"label"`
-	URL          string                  `json:"url"`
+	URL          string                  `json:"url,omitempty"`
+	Inline       string                  `json:"inline,omitempty"`
 	Headers      []SubscriptionHeader    `json:"headers"`
 	RefreshHours int                     `json:"refreshHours"`
 	Enabled      bool                    `json:"enabled"`
@@ -160,6 +170,7 @@ func toSubscriptionDTO(s subscription.Subscription) SubscriptionDTO {
 		ID:           s.ID,
 		Label:        s.Label,
 		URL:          s.URL,
+		IsInline:     s.IsInline(),
 		Headers:      hh,
 		RefreshHours: s.RefreshHours,
 		LastFetched:  last,
@@ -274,6 +285,7 @@ func (h *SubscriptionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	in := subscription.CreateInput{
 		Label:        req.Label,
 		URL:          req.URL,
+		Inline:       req.Inline,
 		Headers:      fromSubscriptionHeaders(req.Headers),
 		RefreshHours: req.RefreshHours,
 		Enabled:      req.Enabled,

@@ -55,8 +55,11 @@ func (s *Service) lockSub(id string) *sync.Mutex {
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (*Subscription, error) {
-	if in.URL == "" {
-		return nil, errors.New("subscription: URL is required")
+	switch {
+	case in.URL == "" && in.Inline == "":
+		return nil, errors.New("subscription: either URL or inline content is required")
+	case in.URL != "" && in.Inline != "":
+		return nil, errors.New("subscription: URL and inline content are mutually exclusive")
 	}
 	sub, err := s.store.Create(in)
 	if err != nil {
@@ -121,11 +124,24 @@ func (s *Service) refreshLocked(ctx context.Context, id string) (*RefreshResult,
 	if err != nil {
 		return nil, err
 	}
-	body, ct, err := Fetch(sub.URL, sub.Headers, s.fetchOpts)
-	if err != nil {
-		masked := fmt.Errorf("%s", MaskURL(err.Error(), sub.URL))
-		s.store.UpdateState(id, RefreshResult{When: time.Now(), Err: masked})
-		return nil, masked
+	var body []byte
+	var ct string
+	if sub.IsInline() {
+		// Inline subscription: paste content is the body. No HTTP, no
+		// MaskURL on errors (there's no URL to mask). The same
+		// downstream parser (Clash YAML / sing-box JSON / share-links)
+		// handles whatever the user pasted.
+		body = []byte(sub.Inline)
+		ct = "text/plain; charset=utf-8"
+	} else {
+		fetched, fetchedCT, fetchErr := Fetch(sub.URL, sub.Headers, s.fetchOpts)
+		if fetchErr != nil {
+			masked := fmt.Errorf("%s", MaskURL(fetchErr.Error(), sub.URL))
+			s.store.UpdateState(id, RefreshResult{When: time.Now(), Err: masked})
+			return nil, masked
+		}
+		body = fetched
+		ct = fetchedCT
 	}
 	isClash := vlink.IsClashYAML(body)
 	isSbJSON := !isClash && vlink.IsSingboxJSON(body)
@@ -348,6 +364,25 @@ func (s *Service) Update(id string, patch UpdatePatch) (*Subscription, error) {
 	mu := s.lockSub(id)
 	mu.Lock()
 	defer mu.Unlock()
+	// Source-type guard: URL-backed and inline subscriptions stay on
+	// their original source for life. Reject patches that would clear
+	// a URL (would make a URL-backed sub source-less) or that would
+	// add a URL to an inline sub (would dual-source it). Inline body
+	// is not in UpdatePatch at all, so the reverse direction is
+	// unreachable from API.
+	if patch.URL != nil {
+		newURL := *patch.URL
+		current, err := s.store.Get(id)
+		if err != nil {
+			return nil, err
+		}
+		if current.IsInline() {
+			return nil, errors.New("subscription: cannot add URL to an inline subscription")
+		}
+		if newURL == "" {
+			return nil, errors.New("subscription: cannot clear URL after creation")
+		}
+	}
 	sub, err := s.store.Update(id, patch)
 	if err != nil {
 		return nil, err

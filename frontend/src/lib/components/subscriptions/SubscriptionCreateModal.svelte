@@ -14,8 +14,11 @@
 	}
 	let { open = $bindable(false) }: Props = $props();
 
+	type SourceKind = 'url' | 'inline';
+	let source = $state<SourceKind>('url');
 	let label = $state('');
 	let url = $state('');
+	let inlineText = $state('');
 	let headersText = $state(DEFAULT_PRESET);
 	let refreshHoursStr = $state('24');
 	let refreshHours = $state(24);
@@ -41,8 +44,10 @@
 	];
 
 	function reset(): void {
+		source = 'url';
 		label = '';
 		url = '';
+		inlineText = '';
 		headersText = DEFAULT_PRESET;
 		refreshHoursStr = '24';
 		refreshHours = 24;
@@ -62,13 +67,22 @@
 
 	async function submit(): Promise<void> {
 		error = '';
+		if (source === 'inline' && !inlineText.trim()) {
+			error = 'Вставьте хотя бы одну ссылку';
+			return;
+		}
+		if (source === 'url' && !url.trim()) {
+			error = 'Укажите URL подписки';
+			return;
+		}
 		submitting = true;
 		try {
 			const sub = await api.createSubscription({
 				label,
-				url,
-				headers: parseHeadersText(headersText),
-				refreshHours,
+				url: source === 'url' ? url : undefined,
+				inline: source === 'inline' ? inlineText : undefined,
+				headers: source === 'url' ? parseHeadersText(headersText) : [],
+				refreshHours: source === 'url' ? refreshHours : 0,
 				enabled,
 				mode,
 				urlTest:
@@ -100,27 +114,70 @@
 			<span class="lbl">Название</span>
 			<input class="inp" type="text" bind:value={label} placeholder="Provider X" required />
 		</label>
-		<label class="row">
-			<span class="lbl">URL подписки</span>
-			<input
-				class="inp"
-				type="url"
-				bind:value={url}
-				placeholder="https://provider.example/sub/abc"
-				required
-			/>
-		</label>
+
 		<div class="row">
-			<HeadersTextarea bind:value={headersText} />
+			<span class="lbl">Источник</span>
+			<div class="source-tabs" role="tablist" aria-label="Источник подписки">
+				<button
+					type="button"
+					role="tab"
+					aria-selected={source === 'url'}
+					class="source-tab"
+					class:active={source === 'url'}
+					onclick={() => (source = 'url')}
+				>
+					По ссылке
+				</button>
+				<button
+					type="button"
+					role="tab"
+					aria-selected={source === 'inline'}
+					class="source-tab"
+					class:active={source === 'inline'}
+					onclick={() => (source = 'inline')}
+				>
+					Список вручную
+				</button>
+			</div>
 		</div>
-		<div class="row">
-			<Dropdown
-				label="Авто-обновление"
-				bind:value={refreshHoursStr}
-				options={refreshOptions}
-				fullWidth
-			/>
-		</div>
+
+		{#if source === 'url'}
+			<label class="row">
+				<span class="lbl">URL подписки</span>
+				<input
+					class="inp"
+					type="url"
+					bind:value={url}
+					placeholder="https://provider.example/sub/abc"
+				/>
+			</label>
+			<div class="row">
+				<HeadersTextarea bind:value={headersText} />
+			</div>
+			<div class="row">
+				<Dropdown
+					label="Авто-обновление"
+					bind:value={refreshHoursStr}
+					options={refreshOptions}
+					fullWidth
+				/>
+			</div>
+		{:else}
+			<label class="row">
+				<span class="lbl">Ссылки на серверы (по одной на строку)</span>
+				<textarea
+					class="inp inline-area"
+					bind:value={inlineText}
+					placeholder={`vless://...\ntrojan://...\nhysteria2://...`}
+					rows="6"
+				></textarea>
+				<span class="hint">
+					Поддерживаются share-link'и (vless / trojan / shadowsocks / hysteria2),
+					Clash YAML и sing-box JSON. Авто-обновления нет — список замораживается
+					на момент создания.
+				</span>
+			</label>
+		{/if}
 
 		<div class="row">
 			<span class="lbl">Режим выбора сервера</span>
@@ -280,5 +337,48 @@
 	@media (max-width: 480px) {
 		.mode-grid { grid-template-columns: 1fr; }
 		.row.two-col { flex-direction: column; }
+	}
+
+	.source-tabs {
+		display: inline-flex;
+		gap: 0;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		padding: 2px;
+		background: var(--color-bg-primary);
+		width: fit-content;
+	}
+	.source-tab {
+		appearance: none;
+		background: transparent;
+		border: 0;
+		color: var(--color-text-muted);
+		padding: 0.4rem 0.85rem;
+		font-size: 0.82rem;
+		cursor: pointer;
+		border-radius: 4px;
+		transition: background 120ms, color 120ms;
+	}
+	.source-tab:hover { color: var(--color-text-primary); }
+	.source-tab.active {
+		background: var(--color-bg-secondary, rgba(59, 130, 246, 0.1));
+		color: var(--color-text-primary);
+		font-weight: 500;
+	}
+	.source-tab:focus-visible {
+		outline: 2px solid var(--color-primary, #3b82f6);
+		outline-offset: 1px;
+	}
+	.inline-area {
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 0.78rem;
+		min-height: 140px;
+		resize: vertical;
+	}
+	.hint {
+		font-size: 0.74rem;
+		color: var(--color-text-muted);
+		line-height: 1.4;
+		margin-top: 0.25rem;
 	}
 </style>

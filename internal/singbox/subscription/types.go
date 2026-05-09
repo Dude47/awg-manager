@@ -49,13 +49,16 @@ func DefaultURLTestConfig() URLTestConfig {
 	}
 }
 
-// Subscription is the persisted shape of a VPN subscription.
+// Subscription is the persisted shape of a VPN subscription. A
+// subscription is either URL-backed (Inline == "") or inline (URL == "");
+// IsInline is the canonical predicate.
 type Subscription struct {
 	ID           string           `json:"id"`                  // uuid
 	Label        string           `json:"label"`               // user-facing
-	URL          string           `json:"url"`                 // subscription URL
-	Headers      []Header         `json:"headers"`             // custom HTTP headers for fetch
-	RefreshHours int              `json:"refreshHours"`        // 0 = manual only
+	URL          string           `json:"url"`                 // subscription URL ("" when inline)
+	Inline       string           `json:"inline,omitempty"`    // raw paste of share-links / clash YAML / sing-box JSON
+	Headers      []Header         `json:"headers"`             // custom HTTP headers for fetch (URL-backed only)
+	RefreshHours int              `json:"refreshHours"`        // 0 = manual only; ignored for inline
 	LastFetched  time.Time        `json:"lastFetched"`
 	LastError    string           `json:"lastError,omitempty"`
 	SelectorTag  string           `json:"selectorTag"`           // "sub-<id-short>"
@@ -69,6 +72,14 @@ type Subscription struct {
 	Enabled      bool             `json:"enabled"`
 	Mode         SubscriptionMode `json:"mode,omitempty"`        // "" treated as ModeSelector for back-compat
 	URLTest      *URLTestConfig   `json:"urlTest,omitempty"`     // populated when Mode == ModeURLTest
+}
+
+// IsInline reports whether the subscription's content is paste-supplied
+// rather than fetched from a remote URL. URL and Inline are mutually
+// exclusive at create time and the source type is frozen for the
+// lifetime of the subscription (Update rejects switching).
+func (s Subscription) IsInline() bool {
+	return s.URL == "" && s.Inline != ""
 }
 
 // EffectiveMode returns the subscription's mode with the empty-string
@@ -108,10 +119,12 @@ type Header struct {
 	Value string `json:"value"`
 }
 
-// CreateInput is the input to Service.Create.
+// CreateInput is the input to Service.Create. Exactly one of URL or
+// Inline must be set; setting both or neither is rejected.
 type CreateInput struct {
 	Label        string
 	URL          string
+	Inline       string
 	Headers      []Header
 	RefreshHours int
 	Enabled      bool

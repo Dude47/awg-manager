@@ -372,6 +372,94 @@ func TestService_SetActiveMember_UsesClashAPI(t *testing.T) {
 	}
 }
 
+func TestService_Create_InlinePastedShareLinks(t *testing.T) {
+	store, _ := NewStore(filepath.Join(t.TempDir(), "sub.json"))
+	mutator := &fakeMutator{}
+	svc := NewService(store, mutator)
+
+	inline := "vless://3a3b1c2e-9999-4321-aaaa-1234567890ab@h1.example:443?security=tls&sni=h\n" +
+		"trojan://p@h2.example:443?security=tls&sni=h\n"
+	sub, err := svc.Create(context.Background(), CreateInput{
+		Label:   "manual",
+		Inline:  inline,
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Create inline: %v", err)
+	}
+	if !sub.IsInline() {
+		t.Errorf("subscription should be inline (URL=%q, Inline len=%d)", sub.URL, len(sub.Inline))
+	}
+	if len(sub.MemberTags) < 2 {
+		t.Errorf("expected ≥2 members from pasted share-links, got %d", len(sub.MemberTags))
+	}
+	if sub.LastError != "" {
+		t.Errorf("inline parse should not have errored: %q", sub.LastError)
+	}
+}
+
+func TestService_Create_RejectsBothURLAndInline(t *testing.T) {
+	store, _ := NewStore(filepath.Join(t.TempDir(), "sub.json"))
+	svc := NewService(store, &fakeMutator{})
+	_, err := svc.Create(context.Background(), CreateInput{
+		Label:   "bad",
+		URL:     "https://example.com/sub",
+		Inline:  "vless://...",
+		Enabled: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected mutual-exclusion error, got %v", err)
+	}
+}
+
+func TestService_Create_RejectsNoSource(t *testing.T) {
+	store, _ := NewStore(filepath.Join(t.TempDir(), "sub.json"))
+	svc := NewService(store, &fakeMutator{})
+	_, err := svc.Create(context.Background(), CreateInput{Label: "empty", Enabled: true})
+	if err == nil || !strings.Contains(err.Error(), "either URL or inline") {
+		t.Errorf("expected source-required error, got %v", err)
+	}
+}
+
+func TestService_Update_RejectsClearURLAndAddingURLToInline(t *testing.T) {
+	store, _ := NewStore(filepath.Join(t.TempDir(), "sub.json"))
+	mutator := &fakeMutator{}
+	svc := NewService(store, mutator)
+	inlineSub, err := svc.Create(context.Background(), CreateInput{
+		Label:   "inl",
+		Inline:  "vless://3a3b1c2e-9999-4321-aaaa-1234567890ab@h.example:443?security=tls&sni=h\n",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Create inline: %v", err)
+	}
+	addedURL := "https://example.com/sub"
+	_, err = svc.Update(inlineSub.ID, UpdatePatch{URL: &addedURL})
+	if err == nil || !strings.Contains(err.Error(), "inline") {
+		t.Errorf("expected reject-add-URL-to-inline, got %v", err)
+	}
+
+	// URL-backed sub: clearing URL must be rejected too. Use httptest
+	// so Create succeeds (refresh tries to fetch the URL).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("vless://3a3b1c2e-9999-4321-aaaa-1234567890ab@h.example:443?security=tls&sni=h\n"))
+	}))
+	defer srv.Close()
+	urlSub, err := svc.Create(context.Background(), CreateInput{
+		Label:   "url",
+		URL:     srv.URL,
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("Create url: %v", err)
+	}
+	emptyURL := ""
+	_, err = svc.Update(urlSub.ID, UpdatePatch{URL: &emptyURL})
+	if err == nil || !strings.Contains(err.Error(), "clear URL") {
+		t.Errorf("expected reject-clear-URL, got %v", err)
+	}
+}
+
 func TestService_SetActiveMember_RejectsURLTestMode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(

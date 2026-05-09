@@ -69,18 +69,21 @@
 	async function save(): Promise<void> {
 		saving = true;
 		try {
-			await api.updateSubscription(subscription.id, {
+			const patch: Parameters<typeof api.updateSubscription>[1] = {
 				label,
-				url,
-				headers: parseHeadersText(headersText),
-				refreshHours,
 				enabled,
 				mode,
 				urlTest:
 					mode === 'urltest'
 						? { url: utUrl, intervalSec: utIntervalSec, toleranceMs: utToleranceMs }
 						: undefined,
-			});
+			};
+			if (!subscription.isInline) {
+				patch.url = url;
+				patch.headers = parseHeadersText(headersText);
+				patch.refreshHours = refreshHours;
+			}
+			await api.updateSubscription(subscription.id, patch);
 			onUpdated();
 		} finally {
 			saving = false;
@@ -106,13 +109,27 @@
 	}}
 >
 	<label><span>Название</span><input bind:value={label} /></label>
-	<label><span>URL</span><input bind:value={url} /></label>
-	<HeadersTextarea bind:value={headersText} />
-	<Dropdown
-		label="Авто-обновление"
-		bind:value={refreshHoursStr}
-		options={refreshOptions}
-	/>
+	{#if subscription.isInline}
+		<div class="inline-info">
+			<div class="inline-badge">Список вручную</div>
+			<div class="inline-summary">
+				{subscription.members.length === 1
+					? '1 сервер'
+					: subscription.members.length < 5
+						? `${subscription.members.length} сервера`
+						: `${subscription.members.length} серверов`}
+				· редактирование списка появится позже
+			</div>
+		</div>
+	{:else}
+		<label><span>URL</span><input bind:value={url} /></label>
+		<HeadersTextarea bind:value={headersText} />
+		<Dropdown
+			label="Авто-обновление"
+			bind:value={refreshHoursStr}
+			options={refreshOptions}
+		/>
+	{/if}
 
 	<div class="mode-section">
 		<span class="mode-label">Режим выбора сервера</span>
@@ -274,5 +291,30 @@
 	@media (max-width: 480px) {
 		.mode-grid { grid-template-columns: 1fr; }
 		.ut-row { flex-direction: column; }
+	}
+	.inline-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		padding: 0.6rem 0.8rem;
+		background: var(--color-bg-secondary, var(--color-bg-primary));
+		border: 1px dashed var(--color-border);
+		border-radius: 4px;
+	}
+	.inline-badge {
+		display: inline-flex;
+		align-self: flex-start;
+		padding: 0.15rem 0.5rem;
+		background: var(--color-primary, #3b82f6);
+		color: white;
+		border-radius: 3px;
+		font-size: 0.72rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+	.inline-summary {
+		font-size: 0.78rem;
+		color: var(--color-text-muted);
 	}
 </style>

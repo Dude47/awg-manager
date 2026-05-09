@@ -115,9 +115,11 @@
 		<div class="val mono">{subscription.selectorTag}</div>
 	</div>
 	<div class="actions">
-		<Button variant="primary" size="sm" disabled={refreshing} loading={refreshing} onclick={refresh}>
-			{refreshing ? 'Обновляем...' : 'Обновить сейчас'}
-		</Button>
+		{#if !subscription.isInline}
+			<Button variant="primary" size="sm" disabled={refreshing} loading={refreshing} onclick={refresh}>
+				{refreshing ? 'Обновляем...' : 'Обновить сейчас'}
+			</Button>
+		{/if}
 		<Button
 			variant="ghost"
 			size="sm"

@@ -1478,6 +1478,7 @@ export interface Subscription {
 	id: string;
 	label: string;
 	url: string;
+	isInline: boolean;
 	headers: SubscriptionHeader[];
 	refreshHours: number;
 	lastFetched: string; // RFC 3339, "" when never fetched
@@ -1507,7 +1508,8 @@ export interface SubscriptionRefreshResult {
 
 export interface CreateSubscriptionInput {
 	label: string;
-	url: string;
+	url?: string;
+	inline?: string;
 	headers: SubscriptionHeader[];
 	refreshHours: number;
 	enabled: boolean;

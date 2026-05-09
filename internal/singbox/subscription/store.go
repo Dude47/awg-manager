@@ -105,6 +105,7 @@ func (s *Store) Create(in CreateInput) (*Subscription, error) {
 		ID:           id,
 		Label:        in.Label,
 		URL:          in.URL,
+		Inline:       in.Inline,
 		Headers:      in.Headers,
 		RefreshHours: in.RefreshHours,
 		Enabled:      in.Enabled,
@@ -330,6 +331,12 @@ func (s *Store) MaybeRefresh(now time.Time) []Subscription {
 	out := []Subscription{}
 	for _, sub := range s.data {
 		if !sub.Enabled || sub.RefreshHours <= 0 {
+			continue
+		}
+		// Inline subscriptions have no remote source — auto-refresh
+		// would just re-parse the same paste. Skip; user can still
+		// trigger a manual refresh from the UI if they want a re-parse.
+		if sub.IsInline() {
 			continue
 		}
 		if sub.LastFetched.IsZero() ||
