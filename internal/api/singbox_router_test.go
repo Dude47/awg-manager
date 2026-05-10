@@ -47,7 +47,7 @@ func (m *mockRouterSvc) DeleteRuleSet(ctx context.Context, tag string, force boo
 	return nil
 }
 func (m *mockRouterSvc) RefreshRuleSet(ctx context.Context, tag string) error { return nil }
-func (m *mockRouterSvc) ListCompositeOutbounds(ctx context.Context) ([]router.Outbound, error) {
+func (m *mockRouterSvc) ListCompositeOutbounds(ctx context.Context) ([]router.CompositeOutboundView, error) {
 	return nil, nil
 }
 func (m *mockRouterSvc) AddCompositeOutbound(ctx context.Context, o router.Outbound) error {

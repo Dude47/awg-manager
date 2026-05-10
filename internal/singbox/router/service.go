@@ -35,7 +35,7 @@ type Service interface {
 	DeleteRuleSet(ctx context.Context, tag string, force bool) error
 	RefreshRuleSet(ctx context.Context, tag string) error
 
-	ListCompositeOutbounds(ctx context.Context) ([]Outbound, error)
+	ListCompositeOutbounds(ctx context.Context) ([]CompositeOutboundView, error)
 	AddCompositeOutbound(ctx context.Context, o Outbound) error
 	UpdateCompositeOutbound(ctx context.Context, tag string, o Outbound) error
 	DeleteCompositeOutbound(ctx context.Context, tag string, force bool) error
@@ -142,6 +142,10 @@ type Deps struct {
 	IPTables     *IPTables
 	AWGTags      AWGTagCatalog        // optional — when nil, computeIssues only sees cfg.Outbounds
 	SingboxTunnels SingboxTunnelCatalog // optional — when nil, computeIssues skips cross-slot tunnel tags
+	// SubscriptionComposites lists composite outbounds owned by the
+	// subscription slot (40-subscriptions.json). Optional — when nil,
+	// ListCompositeOutbounds returns only this service's own composites.
+	SubscriptionComposites *SubscriptionCompositesAdapter
 	// Orch is the config.d orchestrator. When non-nil (production),
 	// persistConfig writes 20-router.json through the slot writer and
 	// Enable / Disable toggle SlotRouter so the file moves between
@@ -741,12 +745,22 @@ func (s *ServiceImpl) RefreshRuleSet(ctx context.Context, tag string) error {
 	return s.deps.Singbox.Reload()
 }
 
-func (s *ServiceImpl) ListCompositeOutbounds(ctx context.Context) ([]Outbound, error) {
+func (s *ServiceImpl) ListCompositeOutbounds(ctx context.Context) ([]CompositeOutboundView, error) {
 	cfg, err := s.loadRouterConfig()
 	if err != nil {
 		return nil, err
 	}
-	return cfg.CompositeOutbounds(), nil
+	own := cfg.CompositeOutbounds()
+	out := make([]CompositeOutboundView, 0, len(own))
+	for _, o := range own {
+		out = append(out, CompositeOutboundView{Outbound: o, Source: "router"})
+	}
+	if s.deps.SubscriptionComposites != nil {
+		for _, o := range s.deps.SubscriptionComposites.ListSubscriptionComposites() {
+			out = append(out, CompositeOutboundView{Outbound: o, Source: "subscription"})
+		}
+	}
+	return out, nil
 }
 
 func (s *ServiceImpl) AddCompositeOutbound(ctx context.Context, o Outbound) error {
