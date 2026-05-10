@@ -44,15 +44,6 @@
 
     let activeTab = $state<'hrneo' | 'dns' | 'ip' | 'policy' | 'clientvpn' | 'singbox'>('dns');
 
-    // Deep link: ?tab=hrneo from the Settings page HR NEO card, etc.
-    $effect(() => {
-        const t = $page.url.searchParams.get('tab');
-        if (t === 'hrneo' || t === 'dns' || t === 'ip' || t === 'policy' || t === 'clientvpn' || t === 'singbox') {
-            if (tabVisible(t)) {
-                activeTab = t;
-            }
-        }
-    });
     let isOS5 = $derived($systemInfo.data?.isOS5 ?? false);
     let hydrarouteInstalled = $derived($routing.hydrarouteStatus?.installed ?? false);
     let hasDnsEngine = $derived(isOS5 || hydrarouteInstalled);
@@ -236,6 +227,8 @@
             tabs={tabItems}
             active={activeTab}
             onchange={(id) => activeTab = id as typeof activeTab}
+            urlParam="tab"
+            defaultTab="dns"
         />
 
         {#if activeTab === 'hrneo'}
