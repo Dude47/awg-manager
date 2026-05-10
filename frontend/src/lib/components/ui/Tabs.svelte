@@ -155,7 +155,7 @@
     <div class="backdrop" onclick={() => dropdownOpen = false} onkeydown={() => {}}></div>
 {/if}
 
-<div class="overflow-tabs" bind:this={containerEl}>
+<div class="overflow-tabs" class:has-dropdown={dropdownOpen} bind:this={containerEl}>
     <!-- Hidden measurement row: renders all tabs offscreen to measure widths -->
     <div class="measure-row" bind:this={measureEl} aria-hidden="true">
         {#each tabs as tab, i (tab.id)}
@@ -236,6 +236,14 @@
         position: relative;
         z-index: 41;
         margin-bottom: 1rem;
+    }
+
+    /* When an instance opens its dropdown, lift its stacking context above
+       any sibling Tabs instances (e.g. /routing has both a page-level Tabs
+       and SingboxRoutingPage's inner Tabs — without this, the later DOM
+       sibling paints over the earlier one's dropdown at z-index 41). */
+    .overflow-tabs.has-dropdown {
+        z-index: 100;
     }
 
     .measure-row {
