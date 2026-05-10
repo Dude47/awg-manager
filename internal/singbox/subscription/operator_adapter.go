@@ -206,6 +206,25 @@ func (a *OperatorAdapter) RemoveOutbound(tag string) error {
 	return a.flush()
 }
 
+// SubscriptionOutbounds returns a snapshot of every outbound currently
+// stored in this slot. The returned slice is freshly allocated; the
+// inner maps are shared (callers MUST treat them as read-only). Callers
+// outside this package use this to surface subscription-managed
+// composites in UI/API contexts that historically only saw the router
+// slot's composites.
+func (a *OperatorAdapter) SubscriptionOutbounds() []map[string]any {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	out := make([]map[string]any, 0, len(a.cfg.Outbounds))
+	for _, v := range a.cfg.Outbounds {
+		if ob, ok := v.(map[string]any); ok {
+			out = append(out, ob)
+		}
+	}
+	return out
+}
+
 // AddInbound inserts the inbound if its tag is not already present.
 // Idempotent — re-adding an existing tag is a no-op.
 func (a *OperatorAdapter) AddInbound(tag string, jsonBody []byte) error {
