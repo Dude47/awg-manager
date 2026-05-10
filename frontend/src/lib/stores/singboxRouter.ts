@@ -45,6 +45,20 @@ function createSingboxRouterStore() {
 			),
 	);
 
+	// optionsReady — true once all PollingStore sources for `options`
+	// have completed at least one fetch attempt. Consumers (e.g. wizard
+	// auto-skip) gate behavior on this to avoid mis-firing during the
+	// brief cold-load window where `outbounds` is populated but the
+	// PollingStore-backed sources are still 'idle'/'loading'.
+	const optionsReady = derived(
+		[singboxTunnels, awgTags, subscriptionsStore],
+		([$sb, $awg, $subs]) => {
+			const settled = (s: 'idle' | 'loading' | 'fresh' | 'stale' | 'error'): boolean =>
+				s === 'fresh' || s === 'stale' || s === 'error';
+			return settled($sb.status) && settled($awg.status) && settled($subs.status);
+		},
+	);
+
 	async function loadAll(): Promise<void> {
 		loading.set(true);
 		error.set(null);
@@ -123,6 +137,7 @@ function createSingboxRouterStore() {
 		dnsRules: { subscribe: dnsRules.subscribe },
 		dnsGlobals: { subscribe: dnsGlobals.subscribe },
 		options: { subscribe: options.subscribe },
+		optionsReady: { subscribe: optionsReady.subscribe },
 		loading: { subscribe: loading.subscribe },
 		error: { subscribe: error.subscribe },
 		loadAll,

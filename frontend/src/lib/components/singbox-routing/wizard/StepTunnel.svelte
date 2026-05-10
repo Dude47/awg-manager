@@ -12,6 +12,7 @@
 
 	const wizardState = singboxWizard.state;
 	const optionsStore = singboxRouter.options;
+	const optionsReady = singboxRouter.optionsReady;
 
 	// Filter out "Специальные" group: 'direct' makes no sense for "through
 	// which tunnel?". The wizard only offers actual outbounds.
@@ -33,10 +34,14 @@
 	let importError = $state('');
 
 	// Auto-pick when exactly 1 outbound exists across all groups.
+	// Gated on $optionsReady to avoid firing during cold-load (when only
+	// `outbounds` has settled but awgTags/sing-box tunnels/subscriptions
+	// stores are still pending — leaving us with a transient totalCount=1
+	// that disappears once the other sources arrive).
 	// Guards on selected via untrack so this effect doesn't re-fire after
-	// it sets the tag (which would loop with onAdvance call). Effect re-runs
-	// only when groups/totalCount change.
+	// it sets the tag (which would loop with onAdvance call).
 	$effect(() => {
+		if (!$optionsReady) return;
 		if (totalCount !== 1) return;
 		if (untrack(() => selected)) return;
 		const only = groups.flatMap((g) => g.items)[0];
