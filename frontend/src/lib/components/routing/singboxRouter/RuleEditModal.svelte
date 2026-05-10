@@ -1,16 +1,17 @@
 <script lang="ts">
 	import Modal from '$lib/components/ui/Modal.svelte';
-	import { Dropdown, type DropdownOption } from '$lib/components/ui';
-	import type { SingboxRouterRule } from '$lib/types';
+	import { Dropdown, ChipMultiSelect, type DropdownOption, type ChipOption } from '$lib/components/ui';
+	import type { SingboxRouterRule, SingboxRouterRuleSet } from '$lib/types';
 	import type { OutboundGroup } from './outboundOptions';
 
 	interface Props {
 		rule?: SingboxRouterRule;
 		outboundOptions: OutboundGroup[];
+		availableRuleSets: SingboxRouterRuleSet[];
 		onClose: () => void;
 		onSave: (rule: SingboxRouterRule) => Promise<void> | void;
 	}
-	let { rule, outboundOptions, onClose, onSave }: Props = $props();
+	let { rule, outboundOptions, availableRuleSets, onClose, onSave }: Props = $props();
 
 	const outboundDropdownOptions = $derived<DropdownOption[]>([
 		{ value: '', label: '— выберите —' },
@@ -26,7 +27,10 @@
 	// svelte-ignore state_referenced_locally
 	let sourceIpCidrStr = $state((rule?.source_ip_cidr ?? []).join('\n'));
 	// svelte-ignore state_referenced_locally
-	let ruleSetStr = $state((rule?.rule_set ?? []).join(', '));
+	let ruleSetTags = $state<string[]>(rule?.rule_set ?? []);
+	const ruleSetOptions = $derived<ChipOption[]>(
+		availableRuleSets.map((rs) => ({ value: rs.tag, label: rs.tag })),
+	);
 	// svelte-ignore state_referenced_locally
 	let portStr = $state((rule?.port ?? []).join(', '));
 
@@ -53,7 +57,7 @@
 			const domain_suffix = parseLines(domainSuffixStr);
 			const ip_cidr = parseLines(ipCidrStr);
 			const source_ip_cidr = parseLines(sourceIpCidrStr);
-			const rule_set = ruleSetStr.split(',').map((s) => s.trim()).filter(Boolean);
+			const rule_set = ruleSetTags;
 			const port = portStr
 				.split(',')
 				.map((s) => parseInt(s.trim(), 10))
@@ -138,13 +142,19 @@
 			<textarea bind:value={sourceIpCidrStr} rows="6" placeholder="192.168.1.50"></textarea>
 		</label>
 
-		<label class="field">
-			<div class="lbl">Rule sets (через запятую)</div>
-			<input bind:value={ruleSetStr} placeholder="geosite-youtube, geoip-ru" />
+		<div class="field">
+			<div class="lbl">Rule sets</div>
+			<ChipMultiSelect
+				values={ruleSetTags}
+				options={ruleSetOptions}
+				onchange={(next) => (ruleSetTags = next)}
+				placeholder="не выбрано"
+				allowOrphans
+			/>
 			<div class="hint">
-				Имена уже существующих наборов. Для своих доменов и подсетей используйте поля выше.
+				Готовые наборы (geosite/geoip). Для своих доменов и подсетей используйте поля выше.
 			</div>
-		</label>
+		</div>
 
 		<label class="field">
 			<div class="lbl">Порты (через запятую)</div>
