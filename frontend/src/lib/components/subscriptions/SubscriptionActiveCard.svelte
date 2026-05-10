@@ -10,6 +10,7 @@
     } from '$lib/stores/singbox';
     import { subscriptionsStore } from '$lib/stores/subscriptions';
     import type { Subscription, SubscriptionMember } from '$lib/types';
+    import { formatRelativeTime } from '$lib/utils/format';
     import SubscriptionMemberPicker from './SubscriptionMemberPicker.svelte';
     import SingboxSpeedTestModal from '$lib/components/singbox/SingboxSpeedTestModal.svelte';
 
@@ -57,7 +58,7 @@
     const endpointText = $derived(`${activeMember.server}:${activeMember.port}`);
     const isURLTest = $derived(subscription.mode === 'urltest');
     const lastFetchedHuman = $derived(
-        subscription.lastFetched ? formatRelative(subscription.lastFetched) : '—',
+        subscription.lastFetched ? formatRelativeTime(subscription.lastFetched) : '—',
     );
 
     type State = 'ok' | 'slow' | 'fail' | 'unknown';
@@ -128,14 +129,6 @@
         return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     }
 
-    function formatRelative(iso: string): string {
-        const d = new Date(iso);
-        const diff = Date.now() - d.getTime();
-        const hours = Math.floor(diff / 3_600_000);
-        if (hours < 1) return 'только что';
-        if (hours < 24) return `${hours}ч назад`;
-        return `${Math.floor(hours / 24)}д назад`;
-    }
 
 </script>
 
