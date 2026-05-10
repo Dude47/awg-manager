@@ -5,14 +5,16 @@
 	import { api } from '$lib/api/client';
 	import { Button, Modal } from '$lib/components/ui';
 	import { triggerDelayCheck } from '$lib/stores/singbox';
+	import { notifications } from '$lib/stores/notifications';
 	import SubscriptionMemberCard from './SubscriptionMemberCard.svelte';
 
 	interface Props {
 		subscription: Subscription;
 		onUpdated: () => void;
 		autoDelayCheckNonce?: number;
+		liveActiveMember?: string | null;
 	}
-	let { subscription, onUpdated, autoDelayCheckNonce = 0 }: Props = $props();
+	let { subscription, onUpdated, autoDelayCheckNonce = 0, liveActiveMember = null }: Props = $props();
 
 	let refreshing = $state(false);
 	let switching = $state<string | null>(null);
@@ -83,11 +85,30 @@
 			  })),
 	);
 
+	const modeLabel = $derived(subscription.mode === 'urltest' ? 'URLTest' : 'Selector');
+	const modeHint = $derived(
+		subscription.mode === 'urltest'
+			? 'Sing-box автоматически выбирает быстрейший сервер по latency-тесту.'
+			: 'Выберите активный сервер. Selector направит трафик в выбранный outbound.',
+	);
+
+	// For urltest mode, liveActiveMember reflects the auto-selected member as reported
+	// by the running Clash API (polled every 5s by the parent page). For selector mode
+	// this is always null, so we fall back to the persisted activeMember.
+	const effectiveActiveMember = $derived(liveActiveMember || subscription.activeMember);
+
 	async function refresh(): Promise<void> {
 		refreshing = true;
 		lastError = '';
 		try {
-			await api.refreshSubscription(subscription.id);
+			const result = await api.refreshSubscription(subscription.id);
+			const skipped: string[] = [];
+			if (result.skippedDuplicate > 0) skipped.push(`дубликатов: ${result.skippedDuplicate}`);
+			if (result.skippedVmess > 0) skipped.push(`vmess: ${result.skippedVmess}`);
+			if (result.skippedOther > 0) skipped.push(`не поддерживаемых: ${result.skippedOther}`);
+			if (skipped.length > 0) {
+				notifications.warning(`Пропущено — ${skipped.join(', ')}`);
+			}
 			onUpdated();
 		} catch (e) {
 			lastError = e instanceof Error ? e.message : 'Не удалось обновить';
@@ -97,6 +118,9 @@
 	}
 
 	async function pickActive(memberTag: string): Promise<void> {
+		// Urltest auto-selects fastest member; manual pick is rejected by backend
+		// with 409. Surface no error, just no-op the click.
+		if (subscription.mode === 'urltest') return;
 		if (memberTag === subscription.activeMember) return;
 		switching = memberTag;
 		lastError = '';
@@ -159,7 +183,7 @@
 
 <header class="head">
 	<div class="head-info">
-		<div class="lbl">Selector</div>
+		<div class="lbl">{modeLabel}</div>
 		<div class="val mono">{subscription.selectorTag}</div>
 	</div>
 	<div class="actions">
@@ -195,13 +219,13 @@
 {#if memberList.length === 0}
 	<div class="empty">Подписка ещё не загружена. Нажмите «Обновить сейчас».</div>
 {:else}
-	<div class="hint">Выберите активный сервер. Selector направит трафик в выбранный outbound.</div>
+	<div class="hint">{modeHint}</div>
 	<div class="grid">
 		{#each memberList as member (member.tag)}
 			<div class="member-slot">
 				<SubscriptionMemberCard
 					{member}
-					active={member.tag === subscription.activeMember}
+					active={member.tag === effectiveActiveMember}
 					switching={switching === member.tag}
 					disabled={switching !== null}
 					onclick={() => pickActive(member.tag)}

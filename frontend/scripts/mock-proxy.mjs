@@ -91,6 +91,61 @@ let mockSubscriptions = [
 		activeMember: 'sub-demo0002-99887766',
 		enabled: true,
 	},
+	{
+		// Large urltest subscription for visual testing — exercises:
+		// - urltest mode header (Issue 1)
+		// - per-member labels from #fragment (Issue 2): country names, mixed languages
+		// - SNI row visibility (Issue from previous PR)
+		// - 11 members (above the "10+ feels slow" threshold)
+		id: 'sub-bigprov',
+		label: 'Big Provider Pro',
+		url: 'https://bigprovider.example/sub/xyz',
+		headers: [
+			{ name: 'User-Agent', value: 'sing-box/1.14.0' },
+		],
+		refreshHours: 6,
+		lastFetched: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+		lastError: '',
+		selectorTag: 'sub-bigprov',
+		inboundTag: 'sub-bigprov-in',
+		listenPort: 11003,
+		proxyIndex: 13,
+		mode: 'urltest',
+		urlTest: {
+			url: 'https://www.gstatic.com/generate_204',
+			intervalSec: 60,
+			toleranceMs: 50,
+		},
+		memberTags: [
+			'sub-bigprov-de01a1b2',
+			'sub-bigprov-nl02c3d4',
+			'sub-bigprov-fi03e5f6',
+			'sub-bigprov-fr04g7h8',
+			'sub-bigprov-uk05i9j0',
+			'sub-bigprov-us06k1l2',
+			'sub-bigprov-jp07m3n4',
+			'sub-bigprov-sg08o5p6',
+			'sub-bigprov-hk09q7r8',
+			'sub-bigprov-ca10s9t0',
+			'sub-bigprov-au11u1v2',
+		],
+		members: [
+			{ tag: 'sub-bigprov-de01a1b2', label: '🇩🇪 Germany — Frankfurt', protocol: 'vless',       server: 'de01.bigprov.example',  port: 443,   sni: 'cdn.example.com',     transport: 'tcp', security: 'reality' },
+			{ tag: 'sub-bigprov-nl02c3d4', label: '🇳🇱 Netherlands — A\'dam', protocol: 'vless',      server: 'nl02.bigprov.example',  port: 443,   sni: 'static.example.org',  transport: 'ws',  security: 'tls' },
+			{ tag: 'sub-bigprov-fi03e5f6', label: '🇫🇮 Finland — Helsinki',  protocol: 'trojan',     server: 'fi03.bigprov.example',  port: 443,   sni: 'cdn.example.com',     transport: 'tcp', security: 'tls' },
+			{ tag: 'sub-bigprov-fr04g7h8', label: '🇫🇷 France — Paris',      protocol: 'vless',      server: 'fr04.bigprov.example',  port: 443,                                transport: 'grpc', security: 'reality' },
+			{ tag: 'sub-bigprov-uk05i9j0', label: '🇬🇧 UK — London',          protocol: 'vless',      server: 'uk05.bigprov.example',  port: 8443,  sni: 'web.example.net',     transport: 'ws',  security: 'tls' },
+			{ tag: 'sub-bigprov-us06k1l2', label: '🇺🇸 USA — Los Angeles',    protocol: 'shadowsocks', server: 'us06.bigprov.example', port: 8388,                              transport: 'tcp', security: '' },
+			{ tag: 'sub-bigprov-jp07m3n4', label: '🇯🇵 Japan — Tokyo',        protocol: 'vless',      server: 'jp07.bigprov.example',  port: 443,   sni: 'gstatic.com',         transport: 'tcp', security: 'reality' },
+			{ tag: 'sub-bigprov-sg08o5p6', label: '🇸🇬 Singapore',            protocol: 'hysteria2',  server: 'sg08.bigprov.example',  port: 443,   sni: 'sg.example.io',       transport: 'tcp', security: 'tls' },
+			{ tag: 'sub-bigprov-hk09q7r8', label: '🇭🇰 Hong Kong',            protocol: 'trojan',     server: 'hk09.bigprov.example',  port: 443,                                transport: 'ws',  security: 'tls' },
+			{ tag: 'sub-bigprov-ca10s9t0', label: '🇨🇦 Canada — Toronto',     protocol: 'vless',      server: 'ca10.bigprov.example',  port: 21123, sni: 'ca.example.cloud',    transport: 'tcp', security: 'tls' },
+			{ tag: 'sub-bigprov-au11u1v2',                                    protocol: 'naive',      server: 'au11.bigprov.example',  port: 443,   sni: 'au.example.app',      transport: 'tcp', security: 'tls' },
+		],
+		orphanTags: [],
+		activeMember: 'sub-bigprov-de01a1b2',
+		enabled: true,
+	},
 ];
 let mockSubID = 2;
 
@@ -928,6 +983,25 @@ const server = http.createServer(async (req, res) => {
 				send(res, 400, { success: false, error: { code: 'INVALID_REQUEST', message: String(e) } });
 			}
 		});
+		return;
+	}
+
+	// Live "active now" — for urltest mode, simulate auto-switching by rotating
+	// through members based on time. For selector, return persisted activeMember.
+	if (req.method === 'GET' && path === '/singbox/subscriptions/active-now') {
+		const id = new URL(req.url, 'http://x').searchParams.get('id');
+		const sub = mockSubscriptions.find((s) => s.id === id);
+		if (!sub) {
+			send(res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'subscription not found' } });
+			return;
+		}
+		let now = sub.activeMember || '';
+		if (sub.mode === 'urltest' && sub.memberTags && sub.memberTags.length > 0) {
+			// Rotate every 15 seconds — visible auto-switching for testing.
+			const idx = Math.floor(Date.now() / 15000) % sub.memberTags.length;
+			now = sub.memberTags[idx];
+		}
+		send(res, 200, { success: true, data: { now } });
 		return;
 	}
 

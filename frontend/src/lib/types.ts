@@ -1508,7 +1508,12 @@ export interface SubscriptionRefreshResult {
 	orphaned: number;
 	skippedVmess: number;
 	skippedOther: number;
+	skippedDuplicate: number;
 	parseErrors?: string[];
+}
+
+export interface SubscriptionActiveNowResponse {
+	now: string;
 }
 
 export interface CreateSubscriptionInput {
