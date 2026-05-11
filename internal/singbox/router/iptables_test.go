@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,8 +10,9 @@ import (
 )
 
 type fakeExec struct {
-	calls []fakeCall
-	err   error
+	calls    []fakeCall
+	err      error
+	runIPErr error
 }
 
 type fakeCall struct {
@@ -41,6 +43,9 @@ func (f *fakeExec) runIPTables(_ context.Context, args ...string) error {
 
 func (f *fakeExec) runIP(_ context.Context, args ...string) error {
 	f.calls = append(f.calls, fakeCall{kind: "ip", args: args})
+	if f.runIPErr != nil {
+		return f.runIPErr
+	}
 	if f.err != nil {
 		return f.err
 	}
@@ -58,6 +63,10 @@ func newFakeIPTables(fe *fakeExec) *IPTables {
 		runIPTables:    fe.runIPTables,
 		runIP:          fe.runIP,
 	}
+}
+
+func newFakeExec() *fakeExec {
+	return &fakeExec{}
 }
 
 func TestBuildTProxyModulePath(t *testing.T) {
@@ -254,6 +263,31 @@ func TestRefreshNetfilterHookIfPresent(t *testing.T) {
 	data, _ := os.ReadFile(netfilterHookPath)
 	if !strings.Contains(string(data), "pidof sing-box") {
 		t.Errorf("expected refreshed hook with pidof, got:\n%s", data)
+	}
+}
+
+func TestInstall_IdempotentOnFileExists(t *testing.T) {
+	// After the runIP fix (Task 1 of wizard cleanup), stderr from `ip` is
+	// appended to err.Error() via sysexec.FormatError. The substring guards
+	// in Install() (lines 269, 275) catch "File exists" and silently swallow
+	// the error so a re-Install on already-installed routes/rules is a no-op.
+	rec := newFakeExec()
+	it := &IPTables{
+		restoreNoflush: rec.restoreNoflush,
+		runIPTables:    rec.runIPTables,
+		runIP:          rec.runIP,
+		persistRules:   func(string) error { return nil },
+		persistHook:    func() error { return nil },
+		cleanupHook:    func() {},
+	}
+	if err := it.Install(context.Background(), "0xff"); err != nil {
+		t.Fatalf("first Install: %v", err)
+	}
+
+	// Simulate "File exists" failure on subsequent ip-rule/ip-route add.
+	rec.runIPErr = errors.New("exit status 2 (exit 2, stderr: RTNETLINK answers: File exists)")
+	if err := it.Install(context.Background(), "0xff"); err != nil {
+		t.Fatalf("second Install (idempotent): %v", err)
 	}
 }
 

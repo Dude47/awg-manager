@@ -212,8 +212,8 @@ func NewIPTables() *IPTables {
 		restoreNoflush: sysiptables.RestoreNoflush,
 		runIPTables:    sysiptables.Run,
 		runIP: func(ctx context.Context, args ...string) error {
-			_, err := sysexec.Run(ctx, "ip", args...)
-			return err
+			result, err := sysexec.Run(ctx, "ip", args...)
+			return sysexec.FormatError(result, err)
 		},
 		persistRules: writeNetfilterRulesFile,
 		persistHook:  writeNetfilterHook,
