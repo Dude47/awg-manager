@@ -91,6 +91,7 @@
 			const s = await api.singboxGetStatus();
 			return { running: s.running };
 		},
+		singboxRouterUnassignDevice: (mac: string) => api.unassignDeviceFromPolicy(mac),
 	};
 
 	async function apply(): Promise<void> {

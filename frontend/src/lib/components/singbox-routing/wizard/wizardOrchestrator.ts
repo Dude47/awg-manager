@@ -21,6 +21,7 @@ export interface OrchestratorApi {
 	singboxRouterUpdateDNSRule(index: number, rule: SingboxRouterDNSRule): Promise<void>;
 	singboxRouterEnable(): Promise<void>;
 	singboxDaemonStatus(): Promise<{ running: boolean }>;
+	singboxRouterUnassignDevice(mac: string): Promise<void>;
 }
 
 export interface OrchestratorOptions {
@@ -166,13 +167,20 @@ export async function runWizard(
 
 	singboxWizard.setResolvedPolicyName(policyName);
 
-	// Phase 2: bind devices (use resolved policyName, not the wizard's
-	// local default — what's in settings/NDMS is the source of truth)
-	for (const mac of state.deviceMacs) {
+	// Phase 2: bind new + unbind removed devices (diff against initialDeviceMacs snapshot)
+	const initial = state.initialDeviceMacs;
+	const toBind = state.deviceMacs.filter((m) => !initial.includes(m));
+	const toUnbind = initial.filter((m) => !state.deviceMacs.includes(m));
+	for (const mac of toBind) {
 		await step(`Привязка ${mac}`, 'bindDevice', onProgress, () =>
 			api.assignDeviceToPolicy(mac, policyName),
 		);
 		result.devicesBound++;
+	}
+	for (const mac of toUnbind) {
+		await step(`Отвязка ${mac}`, 'unbindDevice', onProgress, () =>
+			api.singboxRouterUnassignDevice(mac),
+		);
 	}
 
 	// Phase 3: addDNSServer (idempotent — skip if wizard-upstream tag exists)

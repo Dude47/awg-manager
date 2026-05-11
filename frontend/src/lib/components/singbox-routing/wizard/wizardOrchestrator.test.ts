@@ -31,6 +31,7 @@ const fakeApi = () => ({
 	singboxRouterUpdateDNSRule: vi.fn().mockResolvedValue(undefined),
 	singboxRouterEnable: vi.fn().mockResolvedValue(undefined),
 	singboxDaemonStatus: vi.fn().mockResolvedValue({ running: true }),
+	singboxRouterUnassignDevice: vi.fn().mockResolvedValue(undefined),
 });
 
 const presets = [
