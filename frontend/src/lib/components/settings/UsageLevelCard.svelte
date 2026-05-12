@@ -22,31 +22,31 @@
 		{
 			value: 'basic',
 			title: USAGE_LEVEL_LABELS.basic,
-			summary: 'Только туннели',
+			summary: 'Основные туннели и базовая диагностика',
 			includes: [
-				'AmneziaWG туннели',
-				'Системные WireGuard туннели',
-				'Диагностика',
+				'AmneziaWG-туннели',
+				'Системные WireGuard-туннели',
+				'Диагностика и проверки',
 			],
 		},
 		{
 			value: 'advanced',
 			title: USAGE_LEVEL_LABELS.advanced,
-			summary: 'Туннели, серверы, маршрутизация',
+			summary: 'Туннели, серверы и основная маршрутизация',
 			includes: [
-				'Всё из Базового',
-				'Sing-box туннели',
-				'Серверы (managed WireGuard)',
-				'Маршрутизация: политики, клиенты, DNS, IP, Device Proxy',
-				'Мониторинг',
-				'Веб-терминал',
+				'Всё из уровня "Базовый"',
+				'SingBox-туннели и подписки',
+				'Серверы WireGuard и DeviceProxy',
+				'Маршрутизация: политики, клиенты, DNS и IP',
+				'Системный мониторинг',
+				'Веб-терминал и режим списка для AWG',
 			],
 		},
 		{
 			value: 'expert',
 			title: USAGE_LEVEL_LABELS.expert,
-			summary: 'Все функции',
-			includes: ['Всё из Расширенного', 'HR Neo', 'Sing-box Router'],
+			summary: 'Полный набор функций для тонкой настройки',
+			includes: ['Всё из уровня "Расширенный"', 'HydraRoute Neo', 'Sing-box Router'],
 		},
 	];
 
@@ -154,13 +154,28 @@
 	onclose={() => (infoFor = null)}
 >
 	{#if infoOpt}
-		<p>{infoOpt.summary}</p>
-		<h3>Что включает</h3>
-		<ul>
-			{#each infoOpt.includes as item}
-				<li>{item}</li>
-			{/each}
-		</ul>
+		<div class="level-info-panel">
+			<div class="level-info-summary">
+				<span class="level-info-eyebrow">Кратко</span>
+				<p>{infoOpt.summary}</p>
+			</div>
+
+			<div class="level-info-section">
+				<h3>Что включает</h3>
+				<ul class="level-info-list">
+					{#each infoOpt.includes as item}
+						<li class="level-info-item">
+							<span class="level-info-bullet" aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<path d="M20 6 9 17l-5-5" />
+								</svg>
+							</span>
+							<span>{item}</span>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		</div>
 	{/if}
 </Modal>
 
@@ -314,6 +329,87 @@
 		height: 12px;
 		fill: none;
 		stroke: currentColor;
+		stroke-width: 2;
+	}
+
+	.level-info-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.level-info-summary {
+		padding: 0.875rem 1rem;
+		background: var(--color-bg-tertiary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+	}
+
+	.level-info-eyebrow {
+		display: inline-flex;
+		margin-bottom: 0.375rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+	}
+
+	.level-info-summary p {
+		margin: 0;
+		font-size: 1rem;
+		line-height: 1.5;
+		color: var(--color-text-primary);
+	}
+
+	.level-info-section h3 {
+		margin: 0 0 0.75rem;
+		font-size: 0.9375rem;
+		font-weight: 700;
+		color: var(--color-text-primary);
+	}
+
+	.level-info-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+
+	.level-info-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 0.75rem 0.875rem;
+		background: var(--color-bg-tertiary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		line-height: 1.45;
+		color: var(--color-text-secondary);
+	}
+
+	.level-info-bullet {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		flex: 0 0 1.25rem;
+		margin-top: 0.0625rem;
+		border-radius: 999px;
+		background: var(--color-accent-tint);
+		color: var(--color-accent);
+	}
+
+	.level-info-bullet svg {
+		width: 0.875rem;
+		height: 0.875rem;
+		fill: none;
+		stroke: currentColor;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 		stroke-width: 2;
 	}
 </style>
