@@ -21,6 +21,9 @@
 	import type { Subscription, SubscriptionMember } from '$lib/types';
 
 	type TunnelTab = 'awg' | 'singbox' | 'subscriptions';
+	type AwgTunnelViewMode = 'cards' | 'compact' | 'list';
+
+	const AWG_TUNNEL_VIEW_STORAGE_KEY = 'awg_tunnel_view_mode';
 
 	// Polling-store subscription: first subscriber triggers the fetch,
 	// the last unsubscribe stops polling. `$tunnels` yields a
@@ -286,6 +289,12 @@
 
 	// Tabs
 	let activeTab = $state<TunnelTab>('awg');
+	let awgViewMode = $state<AwgTunnelViewMode>('cards');
+	let awgViewModeReady = false;
+
+	function isAwgTunnelViewMode(value: string | null): value is AwgTunnelViewMode {
+		return value === 'cards' || value === 'compact' || value === 'list';
+	}
 
 	const tunnelTabs = $derived(
 		[
@@ -304,6 +313,19 @@
 		if (!tunnelTabs.find((t) => t.id === activeTab)) {
 			activeTab = 'awg';
 		}
+	});
+
+	onMount(() => {
+		const stored = localStorage.getItem(AWG_TUNNEL_VIEW_STORAGE_KEY);
+		if (isAwgTunnelViewMode(stored)) {
+			awgViewMode = stored;
+		}
+		awgViewModeReady = true;
+	});
+
+	$effect(() => {
+		if (!awgViewModeReady) return;
+		localStorage.setItem(AWG_TUNNEL_VIEW_STORAGE_KEY, awgViewMode);
 	});
 
 
@@ -643,16 +665,72 @@
 					<StoreStatusBadge store={tunnels} />
 				</div>
 				<div class="toolbar-actions">
+					<div class="view-mode-switch" role="group" aria-label="Вид карточек туннелей">
+						<button
+							type="button"
+							class="view-mode-btn"
+							class:active={awgViewMode === 'cards'}
+							aria-pressed={awgViewMode === 'cards'}
+							aria-label="Большие карточки"
+							title="Большие карточки"
+							onclick={() => (awgViewMode = 'cards')}
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+								<rect x="4" y="5" width="16" height="14" rx="2" />
+								<path d="M7 9h10" />
+								<path d="M7 13h6" />
+							</svg>
+						</button>
+						<button
+							type="button"
+							class="view-mode-btn"
+							class:active={awgViewMode === 'compact'}
+							aria-pressed={awgViewMode === 'compact'}
+							aria-label="Компактные карточки"
+							title="Компактные карточки"
+							onclick={() => (awgViewMode = 'compact')}
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+								<rect x="4" y="5" width="7" height="6" rx="1.5" />
+								<rect x="13" y="5" width="7" height="6" rx="1.5" />
+								<rect x="4" y="13" width="7" height="6" rx="1.5" />
+								<rect x="13" y="13" width="7" height="6" rx="1.5" />
+							</svg>
+						</button>
+						<button
+							type="button"
+							class="view-mode-btn"
+							class:active={awgViewMode === 'list'}
+							aria-pressed={awgViewMode === 'list'}
+							aria-label="Список"
+							title="Список"
+							onclick={() => (awgViewMode = 'list')}
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+								<path d="M9 7h11" />
+								<path d="M9 12h11" />
+								<path d="M9 17h11" />
+								<circle cx="5" cy="7" r="1.2" fill="currentColor" stroke="none" />
+								<circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+								<circle cx="5" cy="17" r="1.2" fill="currentColor" stroke="none" />
+							</svg>
+						</button>
+					</div>
 					<Button variant="secondary" size="md" onclick={handleExportAll} disabled={exporting} iconBefore={exportIcon}>
 						Экспорт
 					</Button>
 					<Button variant="primary" size="md" href="/tunnels/new">+ Создать</Button>
 				</div>
 			</div>
-			<div class="tunnel-grid">
+			<div
+				class="tunnel-grid"
+				class:tunnel-grid--compact={awgViewMode === 'compact'}
+				class:tunnel-grid--list={awgViewMode === 'list'}
+			>
 				{#each awgList as tunnel, i (tunnel.id)}
 					<TunnelCard
 						{tunnel}
+						view={awgViewMode}
 						toggleLoading={toggleLoading[tunnel.id] ?? false}
 						deleteLoading={deleteLoading[tunnel.id] ?? false}
 						autoConnectivityNonce={awgAutoConnectivityNonce}
@@ -675,6 +753,7 @@
 				) as tunnel (tunnel.id)}
 					<SystemTunnelCard
 						{tunnel}
+						view={awgViewMode}
 						onMarkServer={markAsServer}
 						ondetail={(id) => openDetail(id)}
 					/>
@@ -684,10 +763,15 @@
 			{#if externalList.length > 0}
 			<div class="external-section">
 				<h2 class="section-title">Внешние туннели</h2>
-				<div class="tunnel-grid">
+				<div
+					class="tunnel-grid"
+					class:tunnel-grid--compact={awgViewMode === 'compact'}
+					class:tunnel-grid--list={awgViewMode === 'list'}
+				>
 					{#each externalList as extTunnel (extTunnel.interfaceName)}
 						<ExternalTunnelCard
 							tunnel={extTunnel}
+							view={awgViewMode}
 							onadopt={(name) => handleAdoptClick(name)}
 						/>
 					{/each}
@@ -958,6 +1042,61 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+	}
+
+	.view-mode-switch {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.1875rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-bg-secondary);
+	}
+
+	.view-mode-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		padding: 0;
+		border: none;
+		border-radius: calc(var(--radius-sm) - 2px);
+		background: transparent;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: background var(--t-fast) ease, color var(--t-fast) ease;
+	}
+
+	.view-mode-btn:hover {
+		background: var(--color-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.view-mode-btn.active {
+		background: var(--color-accent-tint);
+		color: var(--color-accent);
+	}
+
+	.view-mode-btn:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+	}
+
+	.view-mode-btn svg {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	:global(.tunnel-grid--compact) {
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+		gap: 12px;
+	}
+
+	:global(.tunnel-grid--list) {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 10px;
 	}
 
 	/* Empty-state ghost terminal — page-specific */
@@ -1308,5 +1447,18 @@
 		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 		gap: 1rem;
 		margin-bottom: 1rem;
+	}
+
+	@media (max-width: 700px) {
+		.tunnels-toolbar {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0.75rem;
+		}
+
+		.toolbar-actions {
+			justify-content: space-between;
+			flex-wrap: wrap;
+		}
 	}
 </style>

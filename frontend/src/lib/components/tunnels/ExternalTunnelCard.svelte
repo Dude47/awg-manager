@@ -6,18 +6,23 @@
 
 	interface Props {
 		tunnel: ExternalTunnel;
+		view?: 'cards' | 'compact' | 'list';
 		onadopt?: (interfaceName: string) => void;
 	}
 
-	let { tunnel, onadopt }: Props = $props();
+	let { tunnel, view = 'cards', onadopt }: Props = $props();
 
 	function handleAdopt(): void {
 		onadopt?.(tunnel.interfaceName);
 	}
 </script>
 
-<div class="card ext-card flex flex-col gap-4">
-	<div class="flex justify-between items-start gap-3">
+<div
+	class="card ext-card flex flex-col gap-4"
+	class:view-compact={view === 'compact'}
+	class:view-list={view === 'list'}
+>
+	<div class="header flex justify-between items-start gap-3">
 		<div class="flex flex-col gap-1 min-w-0">
 			<h3 class="tunnel-name">{tunnel.interfaceName}</h3>
 			<div class="flex items-center gap-2 flex-wrap">
@@ -83,12 +88,29 @@
 		border: 1px dashed color-mix(in srgb, var(--warning, #f59e0b) 40%, transparent);
 	}
 
+	.ext-card.view-compact {
+		gap: 12px;
+		padding: 12px 14px;
+	}
+
+	.ext-card.view-list {
+		display: grid;
+		grid-template-columns: minmax(0, 1.3fr) minmax(260px, 1fr) auto;
+		gap: 12px 16px;
+		align-items: start;
+		padding: 12px 14px;
+	}
+
 	.tunnel-name {
 		font-size: 1rem;
 		font-weight: 600;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.ext-card.view-compact .tunnel-name {
+		font-size: 0.95rem;
 	}
 
 	.iface-name {
@@ -147,6 +169,16 @@
 		border-top: 1px solid var(--border);
 	}
 
+	.ext-card.view-compact .details {
+		gap: 10px;
+		padding-top: 10px;
+	}
+
+	.ext-card.view-list .details {
+		padding-top: 0;
+		border-top: none;
+	}
+
 	.detail-label {
 		font-size: 11px;
 		text-transform: uppercase;
@@ -163,5 +195,21 @@
 	.actions-wrapper {
 		padding-top: 12px;
 		border-top: 1px solid var(--border);
+	}
+
+	.ext-card.view-list .actions-wrapper {
+		padding-top: 0;
+		border-top: none;
+		align-self: center;
+	}
+
+	@media (max-width: 1080px) {
+		.ext-card.view-list {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.ext-card.view-list .actions-wrapper {
+			align-self: stretch;
+		}
 	}
 </style>

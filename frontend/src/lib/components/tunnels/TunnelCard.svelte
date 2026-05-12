@@ -4,12 +4,13 @@
 	import { Toggle, TrafficChart, VersionBadge, Badge } from '$lib/components/ui';
 	import { tunnels } from '$lib/stores/tunnels';
 	import { api } from '$lib/api/client';
-	import { formatRelativeTime, formatDuration, secondsSince } from '$lib/utils/format';
+	import { formatRelativeTime, formatDuration, secondsSince, formatBytes } from '$lib/utils/format';
 	import { getTrafficRates, subscribeTraffic, loadHistory } from '$lib/stores/traffic';
 	import ConnectivitySettingsModal from './ConnectivitySettingsModal.svelte';
 
 	interface Props {
 		tunnel: TunnelListItem;
+		view?: 'cards' | 'compact' | 'list';
 		toggleLoading?: boolean;
 		deleteLoading?: boolean;
 		onToggleOnOff?: () => void;
@@ -21,6 +22,7 @@
 
 	let {
 		tunnel,
+		view = 'cards',
 		toggleLoading = false,
 		deleteLoading = false,
 		onToggleOnOff,
@@ -143,6 +145,35 @@
 		return full.slice(0, 12) + '...' + full.slice(-8);
 	});
 
+	let connectionDisplay = $derived.by(() => {
+		const iface = tunnel.resolvedIspInterface || tunnel.ispInterface || '';
+		const label = tunnel.resolvedIspInterfaceLabel || tunnel.ispInterfaceLabel || '';
+		if (!iface) return '';
+		return label ? `${label} (${iface})` : iface;
+	});
+
+	let listStatusText = $derived.by(() => {
+		if (tunnel.hasAddressConflict) return 'Конфликт IP';
+		switch (tunnel.status) {
+			case 'running':
+				if (manualChecking || connectivity === 'checking') return 'Проверка';
+				if (!isCheckDisabled && connectivity === 'disconnected') return 'Нет связи';
+				return 'Активен';
+			case 'starting':
+				return 'Запуск';
+			case 'needs_start':
+				return 'Готов';
+			case 'needs_stop':
+				return 'Остановка';
+			case 'broken':
+				return 'Ошибка';
+			case 'disabled':
+				return 'Выключен';
+			default:
+				return 'Остановлен';
+		}
+	});
+
 	// ─── Traffic chart (collapsible, persisted) ────────────────────
 	let rxRates = $state<number[]>([]);
 	let txRates = $state<number[]>([]);
@@ -157,6 +188,7 @@
 	}
 
 	let tunnelId = $derived(tunnel.id);
+	let chartHeight = $derived(view === 'cards' ? 100 : 76);
 
 	$effect(() => {
 		const id = tunnelId;
@@ -187,7 +219,11 @@
 	});
 </script>
 
-<div class="card border-{borderState}">
+<div
+	class="card border-{borderState}"
+	class:view-compact={view === 'compact'}
+	class:view-list={view === 'list'}
+>
 	<!-- Header -->
 	<div class="header">
 		<div class="head-left">
@@ -386,7 +422,7 @@
 					{txRates}
 					rxTotal={tunnel.rxBytes ?? 0}
 					txTotal={tunnel.txBytes ?? 0}
-					height={100}
+					height={chartHeight}
 					onclick={() => ondetail?.(tunnel.id)}
 				/>
 			</div>
@@ -418,6 +454,19 @@
 	.card.border-broken { border-color: var(--color-broken-border); }
 	.card.border-transitional { border-color: var(--color-warning-border); }
 	.card.border-disabled { border-color: var(--color-text-muted); }
+
+	.card.view-compact {
+		gap: 10px;
+		padding: 12px 14px;
+	}
+
+	.card.view-list {
+		display: grid;
+		grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr) auto;
+		gap: 12px 16px;
+		align-items: start;
+		padding: 12px 14px;
+	}
 
 	/* Header */
 	.header {
@@ -459,6 +508,10 @@
 
 	.tunnel-name:hover {
 		color: var(--color-accent);
+	}
+
+	.card.view-compact .tunnel-name {
+		font-size: 14px;
 	}
 
 	.meta-line {
@@ -609,6 +662,17 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 
+	.card.view-compact .details {
+		gap: 8px;
+		padding: 6px 0;
+	}
+
+	.card.view-list .details {
+		padding: 0;
+		border-top: none;
+		border-bottom: none;
+	}
+
 	.kv-row {
 		display: flex;
 		gap: 14px;
@@ -692,6 +756,12 @@
 		align-items: center;
 	}
 
+	.card.view-list .actions {
+		flex-direction: column;
+		align-items: stretch;
+		justify-content: flex-start;
+	}
+
 	.action-btn {
 		display: inline-flex;
 		align-items: center;
@@ -739,6 +809,17 @@
 		border-radius: 0 0 var(--radius) var(--radius);
 		background: var(--color-bg-secondary);
 		overflow: hidden;
+	}
+
+	.card.view-compact .chart-section {
+		margin: 0 -14px -12px;
+	}
+
+	.card.view-list .chart-section {
+		grid-column: 1 / -1;
+		margin: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
 	}
 
 	.chart-header {
@@ -793,6 +874,18 @@
 	@media (max-width: 400px) {
 		.actions {
 			flex-wrap: wrap;
+		}
+	}
+
+	@media (max-width: 1080px) {
+		.card.view-list {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.card.view-list .actions {
+			flex-direction: row;
+			flex-wrap: wrap;
+			justify-content: flex-end;
 		}
 	}
 </style>

@@ -8,11 +8,12 @@
 
 	interface Props {
 		tunnel: SystemTunnel;
+		view?: 'cards' | 'compact' | 'list';
 		onMarkServer?: (id: string) => void;
 		ondetail?: (id: string) => void;
 	}
 
-	let { tunnel, onMarkServer, ondetail }: Props = $props();
+	let { tunnel, view = 'cards', onMarkServer, ondetail }: Props = $props();
 
 	let connectivity = $state<ConnectivityResult | null>(null);
 	let checking = $state(false);
@@ -94,9 +95,17 @@
 		chartExpanded = !chartExpanded;
 		localStorage.setItem(CHART_KEY_PREFIX + tunnel.id, String(chartExpanded));
 	}
+
+	let chartHeight = $derived(view === 'cards' ? 100 : 76);
 </script>
 
-<div class="card flex flex-col gap-4 transition-[border-color] duration-200" class:status-up={tunnel.status === 'up'} class:status-down={tunnel.status !== 'up'}>
+<div
+	class="card flex flex-col gap-4 transition-[border-color] duration-200"
+	class:status-up={tunnel.status === 'up'}
+	class:status-down={tunnel.status !== 'up'}
+	class:view-compact={view === 'compact'}
+	class:view-list={view === 'list'}
+>
 	<!-- Header: name + badge + LED + connectivity -->
 	<div class="flex justify-between items-start gap-3">
 		<div class="flex flex-col gap-1 min-w-0">
@@ -266,7 +275,7 @@
 					{txRates}
 					rxTotal={tunnel.peer?.rxBytes ?? 0}
 					txTotal={tunnel.peer?.txBytes ?? 0}
-					height={100}
+					height={chartHeight}
 					onclick={() => ondetail?.(tunnel.id)}
 				/>
 			</div>
@@ -284,6 +293,19 @@
 		border-color: var(--text-muted, #6b7280);
 	}
 
+	.card.view-compact {
+		gap: 12px;
+		padding: 12px 14px;
+	}
+
+	.card.view-list {
+		display: grid;
+		grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr) auto;
+		gap: 12px 16px;
+		align-items: start;
+		padding: 12px 14px;
+	}
+
 	/* Tunnel name */
 	.tunnel-name {
 		font-size: 1rem;
@@ -291,6 +313,10 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.card.view-compact .tunnel-name {
+		font-size: 0.95rem;
 	}
 
 	.iface-name {
@@ -415,6 +441,14 @@
 		gap: 12px;
 	}
 
+	.card.view-compact .details {
+		gap: 10px;
+	}
+
+	.card.view-list .details {
+		padding-top: 0;
+	}
+
 	.detail-label {
 		font-size: 11px;
 		text-transform: uppercase;
@@ -447,6 +481,12 @@
 		border-top: 1px solid var(--border);
 	}
 
+	.card.view-list .actions-wrapper {
+		padding-top: 0;
+		border-top: none;
+		align-self: center;
+	}
+
 
 	/* Connectivity gear */
 	.connectivity-gear {
@@ -476,6 +516,17 @@
 		border-radius: 0 0 var(--radius) var(--radius);
 		background: var(--bg-secondary, rgba(0,0,0,0.15));
 		overflow: hidden;
+	}
+
+	.card.view-compact .chart-section {
+		margin: 0 -14px -12px;
+	}
+
+	.card.view-list .chart-section {
+		grid-column: 1 / -1;
+		margin: 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
 	}
 
 	.chart-header {
@@ -531,5 +582,25 @@
 		gap: 0.5rem;
 		align-items: center;
 		flex-wrap: wrap;
+	}
+
+	.card.view-list .actions-row {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	@media (max-width: 1080px) {
+		.card.view-list {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.card.view-list .actions-wrapper {
+			align-self: stretch;
+		}
+
+		.card.view-list .actions-row {
+			flex-direction: row;
+			justify-content: flex-end;
+		}
 	}
 </style>
