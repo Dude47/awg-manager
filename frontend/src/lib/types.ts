@@ -780,6 +780,11 @@ export interface DeviceProxyConfig {
 	selectedOutbound: string;
 }
 
+export interface DeviceProxyInstance extends DeviceProxyConfig {
+	id: string;
+	name: string;
+}
+
 export type DeviceProxyOutboundKind = 'direct' | 'singbox' | 'awg';
 
 export interface DeviceProxyOutbound {

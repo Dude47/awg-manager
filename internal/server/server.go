@@ -719,6 +719,24 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/proxy/outbounds", guarded(deviceProxyHandler.ListOutbounds))
 	mux.HandleFunc("/api/proxy/listen-choices", guarded(deviceProxyHandler.ListenChoices))
 
+	// Multi-instance device proxy endpoints
+	mux.HandleFunc("/api/proxy/instances", guarded(deviceProxyHandler.ListInstances))
+	mux.HandleFunc("/api/proxy/instance", guarded(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			deviceProxyHandler.GetInstance(w, r)
+		case http.MethodPut:
+			deviceProxyHandler.SaveInstance(w, r)
+		case http.MethodDelete:
+			deviceProxyHandler.DeleteInstance(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/proxy/instances/apply", guarded(deviceProxyHandler.ApplyInstances))
+	mux.HandleFunc("/api/proxy/instance/runtime", guarded(deviceProxyHandler.GetInstanceRuntime))
+	mux.HandleFunc("/api/proxy/instance/runtime/select", guarded(deviceProxyHandler.SelectInstanceRuntime))
+
 	// Logging (protected + boot guarded)
 	mux.HandleFunc("/api/logs", guarded(loggingHandler.GetLogs))
 	mux.HandleFunc("/api/logs/clear", guarded(loggingHandler.ClearLogs))

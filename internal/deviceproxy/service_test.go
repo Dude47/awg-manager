@@ -113,6 +113,12 @@ func (f *fakeSingboxOperator) GetSelectorActive(_ context.Context, _ string) (st
 	return f.runtimeActive, nil
 }
 
+func (f *fakeSingboxOperator) ApplyDeviceProxyInstances(_ context.Context, specs []ExternalInstanceSpec) error {
+	// For tests, we don't need to do anything. Just return nil.
+	// Optionally store specs for assertions if needed.
+	return nil
+}
+
 type fakeNDMSQuery struct{ addr string }
 
 func (f *fakeNDMSQuery) GetInterfaceAddress(_ context.Context, _ string) (string, error) {

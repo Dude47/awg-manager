@@ -55,6 +55,7 @@ import type {
 	SingboxImportResponse,
 	SingboxConfigPreview,
 	DeviceProxyConfig,
+	DeviceProxyInstance,
 	DeviceProxyOutbound,
 	DeviceProxyRuntime,
 	AWGTagInfo,
@@ -1362,6 +1363,50 @@ class ApiClient {
 	}> {
 		return this.request('/proxy/listen-choices');
 	}
+
+	// ─────────────────────────────────────────────
+	// #region Device Proxy — multi-instance
+	// ─────────────────────────────────────────────
+
+	async listDeviceProxyInstances(): Promise<DeviceProxyInstance[]> {
+		return this.request<DeviceProxyInstance[]>('/proxy/instances');
+	}
+
+	async getDeviceProxyInstance(id: string): Promise<DeviceProxyInstance> {
+		return this.request<DeviceProxyInstance>(`/proxy/instance?id=${encodeURIComponent(id)}`);
+	}
+
+	async saveDeviceProxyInstance(instance: DeviceProxyInstance): Promise<DeviceProxyInstance> {
+		return this.request<DeviceProxyInstance>('/proxy/instance', {
+			method: 'PUT',
+			body: JSON.stringify(instance)
+		});
+	}
+
+	async deleteDeviceProxyInstance(id: string): Promise<{ deleted: boolean }> {
+		return this.request<{ deleted: boolean }>(`/proxy/instance?id=${encodeURIComponent(id)}`, {
+			method: 'DELETE'
+		});
+	}
+
+	async applyDeviceProxyInstances(): Promise<{ applied: boolean }> {
+		return this.request<{ applied: boolean }>('/proxy/instances/apply', {
+			method: 'POST'
+		});
+	}
+
+	async getDeviceProxyInstanceRuntime(id: string): Promise<DeviceProxyRuntime> {
+		return this.request<DeviceProxyRuntime>(`/proxy/instance/runtime?id=${encodeURIComponent(id)}`);
+	}
+
+	async selectDeviceProxyInstanceRuntime(id: string, tag: string): Promise<{ active: string }> {
+		return this.request<{ active: string }>(`/proxy/instance/runtime/select?id=${encodeURIComponent(id)}`, {
+			method: 'POST',
+			body: JSON.stringify({ tag })
+		});
+	}
+
+	// #endregion
 
 	// #endregion
 
