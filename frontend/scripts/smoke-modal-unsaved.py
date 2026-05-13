@@ -83,8 +83,9 @@ def run_scenario(page: Page, sc: Scenario) -> str:
 
         # Cancel from confirm -> confirm closes, parent stays.
         page.locator('button:has-text("Продолжить редактирование")').first.click(timeout=2000)
-        page.wait_for_timeout(300)
-        if page.locator('.modal-card:has-text("Несохранённые изменения")').count() > 0:
+        try:
+            page.locator('.modal-card:has-text("Несохранённые изменения")').first.wait_for(state="detached", timeout=2000)
+        except PWTimeout:
             return "confirm did not close on cancel"
         assert_modal_open(page)
 
@@ -92,15 +93,18 @@ def run_scenario(page: Page, sc: Scenario) -> str:
         click_backdrop_corner(page)
         assert_confirm_open(page)
         page.locator('button:has-text("Закрыть без сохранения")').first.click(timeout=2000)
-        page.wait_for_timeout(400)
-        if page.locator('.modal-card').count() > 0:
+        try:
+            page.locator('.modal-card').first.wait_for(state="detached", timeout=2000)
+        except PWTimeout:
             return "parent did not close on destroy"
 
         # Reopen clean -> backdrop closes silently.
         sc.trigger(page)
         assert_modal_open(page)
         click_backdrop_corner(page)
-        if page.locator('.modal-card').count() > 0:
+        try:
+            page.locator('.modal-card').first.wait_for(state="detached", timeout=2000)
+        except PWTimeout:
             return "clean form did not close silently"
 
         return "PASS"
