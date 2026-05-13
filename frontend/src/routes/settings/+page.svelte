@@ -3,7 +3,7 @@
 	import { api } from "$lib/api/client";
 	import { notifications } from "$lib/stores/notifications";
 	import { singboxStatus } from "$lib/stores/singbox";
-	import { PageContainer, LoadingSpinner } from "$lib/components/layout";
+	import { PageContainer, PageHeader, LoadingSpinner } from "$lib/components/layout";
 	import { Toggle, Modal, Button } from "$lib/components/ui";
 	import {
 		SystemInfoGrid,
@@ -11,6 +11,7 @@
 		UpdateSection,
 		DnsRouteSettings,
 		IntegrationsCard,
+		ThemeSchemeCard,
 		SettingsFooter,
 		UsageLevelCard,
 	} from "$lib/components/settings";
@@ -193,6 +194,21 @@
 		}
 	}
 
+	async function copyApiKey() {
+		if (!settings) return;
+		const key = (settings.apiKey ?? "").trim();
+		if (!key) {
+			notifications.info("Сначала сгенерируйте API ключ");
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(key);
+			notifications.success("API ключ скопирован в буфер обмена");
+		} catch {
+			notifications.error("Не удалось скопировать — проверьте разрешения браузера");
+		}
+	}
+
 	async function toggleLogging(enabled: boolean) {
 		if (!settings) return;
 		saving = true;
@@ -311,12 +327,14 @@
 	<title>Настройки - AWG Manager</title>
 </svelte:head>
 
-<PageContainer>
+<PageContainer width="full">
+	<PageHeader title="Настройки" />
 	{#if loading}
 		<div class="flex justify-center py-8">
 			<LoadingSpinner size="md" />
 		</div>
 	{:else if settings && systemInfo}
+		<div class="settings-layout">
 		<div class="settings-grid">
 			<aside class="settings-left">
 				<SystemInfoGrid {systemInfo} />
@@ -347,9 +365,13 @@
 					onSelect={selectUsageLevel}
 				/>
 
+				{#if $usageLevel === "expert"}
+					<ThemeSchemeCard />
+				{/if}
+
 				<div class="card">
 					<div class="section-label">Доступ</div>
-					<div class="setting-row api-key-setting">
+					<div class="setting-row">
 						<div class="flex flex-col gap-1">
 							<span class="font-medium">Авторизация</span>
 							<span class="setting-description">
@@ -400,20 +422,24 @@
 				{#if $usageLevel === "expert"}
 				<div class="card">
 					<div class="section-label">Расширенные</div>
-					<div class="setting-row">
+					<div class="setting-row api-key-setting">
 						<div class="flex flex-col gap-1">
 							<span class="font-medium">API Key</span>
 							<span class="setting-description">
 								API ключ для доступа к&nbsp;<code>{origin}/api/</code>, если включена авторизация. Передавайте в заголовке <code>Authorization: Bearer &lt;ключ&gt;</code>.
 							</span>
 						</div>
-						<div class="api-key-row">
+						<div class="api-key-controls">
 							<input
 								type="text"
 								class="api-key-input"
 								value={settings.apiKey ?? ""}
 								readonly
 								placeholder="не сгенерирован"
+								onclick={copyApiKey}
+								title={settings.apiKey?.trim()
+									? "Нажмите, чтобы скопировать в буфер обмена"
+									: "Сначала нажмите «Сгенерировать»"}
 							/>
 							<div class="api-key-action">
 								<Button variant="ghost" size="sm" onclick={generateApiKey} disabled={saving}>
@@ -444,7 +470,7 @@
 				</Button>
 			</div>
 
-			{#if singboxInstalled}
+			{#if singboxInstalled && showSingboxIntegration}
 				<div class="setting-row">
 					<div class="flex flex-col gap-1">
 						<span class="font-medium">Sing-box</span>
@@ -473,7 +499,7 @@
 				</div>
 			{/if}
 
-			{#if hydraInstalled}
+			{#if hydraInstalled && showHydraIntegration}
 				<div class="setting-row">
 					<div class="flex flex-col gap-1">
 						<span class="font-medium">HydraRoute Neo</span>
@@ -493,7 +519,10 @@
 			{/if}
 		</div>
 
-		<SettingsFooter />
+		<div class="settings-doc-block">
+			<SettingsFooter />
+		</div>
+		</div>
 	{/if}
 
 	<Modal
@@ -513,10 +542,19 @@
 </PageContainer>
 
 <style>
+	/* Единый шаг сетки страницы настроек: колонки, стеки, до «Действий», до блока документации, шаг между строками там */
+	.settings-layout {
+		--settings-gap: 0.765rem;
+	}
+
+	.settings-doc-block {
+		margin-top: var(--settings-gap);
+	}
+
 	.settings-grid {
 		display: grid;
 		grid-template-columns: 360px 1fr;
-		gap: 1rem;
+		gap: var(--settings-gap);
 		align-items: start;
 	}
 
@@ -524,7 +562,7 @@
 	.settings-right {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: var(--settings-gap);
 	}
 
 	.settings-left {
@@ -540,7 +578,16 @@
 	}
 
 	.actions-card {
-		margin-top: 0.75rem;
+		margin-top: var(--settings-gap);
+	}
+
+	/* Между строками — тот же шаг, что и между карточками (сумма половин padding) */
+	.actions-card > .setting-row {
+		padding-block: calc(var(--settings-gap) * 0.5);
+	}
+
+	.actions-card > .setting-row:last-of-type {
+		padding-bottom: 0;
 	}
 
 	.action-buttons {
@@ -549,17 +596,18 @@
 		flex-shrink: 0;
 	}
 
-	.api-key-row {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
+	.api-key-controls {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
 		gap: 0.5rem;
-		align-items: center;
-		min-width: 18rem;
-		width: min(34rem, 100%);
+		width: 100%;
+		min-width: 0;
 	}
 
 	.api-key-input {
 		width: 100%;
+		max-width: none;
 		padding: 0.375rem 0.5rem;
 		font-family: var(--font-mono, ui-monospace, monospace);
 		font-size: 0.8rem;
@@ -567,16 +615,31 @@
 		border: 1px solid var(--border, var(--color-border));
 		border-radius: 4px;
 		color: var(--text, var(--color-text));
+		cursor: pointer;
 	}
 	.api-key-input:read-only {
 		opacity: 0.85;
 		cursor: text;
 	}
 	.api-key-action {
+		align-self: flex-end;
 		white-space: nowrap;
 	}
+
 	.api-key-setting {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, min(50%, 34rem));
+		gap: 1rem;
 		align-items: start;
+	}
+	.api-key-setting > *:first-child {
+		min-width: 0;
+	}
+
+	@media (max-width: 640px) {
+		.api-key-setting {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	@media (max-width: 900px) {
@@ -585,11 +648,6 @@
 		}
 		.settings-left {
 			position: static;
-		}
-		.api-key-row {
-			grid-template-columns: 1fr;
-			min-width: 0;
-			width: 100%;
 		}
 	}
 </style>

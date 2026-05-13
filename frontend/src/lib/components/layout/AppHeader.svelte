@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { LegacyTabs, LegacyTab, IconButton, SaveStatusIndicator } from '$lib/components/ui';
 	import { usageLevel } from '$lib/stores/settings';
+	import type { ThemeState } from '$lib/stores/theme';
 	import { isSectionVisible, type Section } from '$lib/types/usageLevel';
 
 	type NavItem = {
@@ -59,12 +60,12 @@
 		authenticated: boolean;
 		authDisabled?: boolean;
 		username?: string | null;
-		theme?: 'dark' | 'light';
+		theme?: ThemeState;
 		currentVersion?: string;
 		hasUpdate?: boolean;
 		isPreRelease?: boolean;
 		mobileMenuOpen?: boolean;
-		onToggleTheme: () => void;
+		onToggleThemeMode: () => void;
 		onLogout: () => void;
 		onOpenDonate: () => void;
 	}
@@ -73,12 +74,24 @@
 		authenticated,
 		authDisabled = false,
 		username = null,
-		theme = 'dark',
+		theme = {
+			preset: 'legacy',
+			mode: 'dark',
+			legacyMode: 'dark',
+			custom: {
+				accent: '#8b5cf6',
+				background: '#111827',
+				text: '#f8fafc',
+			},
+			label: 'AWGM - Legacy',
+			summary: '',
+			supportsModeToggle: true,
+		},
 		currentVersion = '',
 		hasUpdate = false,
 		isPreRelease = false,
 		mobileMenuOpen = $bindable(false),
-		onToggleTheme,
+		onToggleThemeMode,
 		onLogout,
 		onOpenDonate,
 	}: Props = $props();
@@ -117,6 +130,15 @@
 		};
 		return map[upperLabel] ?? upperLabel;
 	}
+
+	/** Для Neo вторая ветка визуально тёмная, но `mode` остаётся dark ради color-scheme — в шапке показываем legacyMode */
+	const themeDisplayMode = $derived(theme.preset === 'neo' ? theme.legacyMode : theme.mode);
+
+	const themeButtonLabel = $derived.by(() => {
+		const currentModeLabel = themeDisplayMode === 'light' ? 'светлая' : 'тёмная';
+		const nextModeLabel = themeDisplayMode === 'light' ? 'тёмную' : 'светлую';
+		return `Переключить ${theme.label} на ${nextModeLabel} тему. Сейчас ${currentModeLabel}.`;
+	});
 </script>
 
 <header class="app-header" class:unauthenticated={!authenticated}>
@@ -206,41 +228,43 @@
 				</IconButton>
 			{/if}
 
-			<IconButton ariaLabel="Переключить тему" onclick={onToggleTheme}>
-				{#if theme === 'dark'}
-					<svg
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						aria-hidden="true"
-					>
-						<circle cx="12" cy="12" r="5" />
-						<line x1="12" y1="1" x2="12" y2="3" />
-						<line x1="12" y1="21" x2="12" y2="23" />
-						<line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-						<line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-						<line x1="1" y1="12" x2="3" y2="12" />
-						<line x1="21" y1="12" x2="23" y2="12" />
-						<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-						<line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-					</svg>
-				{:else}
-					<svg
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						aria-hidden="true"
-					>
-						<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-					</svg>
-				{/if}
-			</IconButton>
+			{#if theme.preset !== 'custom'}
+				<IconButton ariaLabel={themeButtonLabel} onclick={onToggleThemeMode}>
+					{#if themeDisplayMode === 'dark'}
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<circle cx="12" cy="12" r="5" />
+							<line x1="12" y1="1" x2="12" y2="3" />
+							<line x1="12" y1="21" x2="12" y2="23" />
+							<line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+							<line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+							<line x1="1" y1="12" x2="3" y2="12" />
+							<line x1="21" y1="12" x2="23" y2="12" />
+							<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+							<line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+						</svg>
+					{:else}
+						<svg
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+						</svg>
+					{/if}
+				</IconButton>
+			{/if}
 
 			{#if authenticated}
 				<IconButton variant="warm" ariaLabel="Поддержать проект" onclick={onOpenDonate}>
@@ -523,28 +547,8 @@
 		display: none;
 	}
 
-	@media (max-width: 768px) {
+	@media (max-width: 900px) {
 		.nav {
-			display: none;
-		}
-	}
-
-	@media (max-width: 640px) {
-		.app-header.unauthenticated .user-tools {
-			display: none;
-		}
-	}
-
-	@media (max-width: 640px) {
-		.header-inner {
-			grid-template-columns: 1fr auto;
-		}
-
-		.wordmark {
-			display: none;
-		}
-
-		.user-chip {
 			display: none;
 		}
 
@@ -593,6 +597,24 @@
 			color: var(--color-accent);
 			background: var(--color-accent-tint);
 			border-left: 3px solid var(--color-accent);
+		}
+	}
+
+	@media (max-width: 640px) {
+		.app-header.unauthenticated .user-tools {
+			display: none;
+		}
+
+		.header-inner {
+			grid-template-columns: 1fr auto;
+		}
+
+		.wordmark {
+			display: none;
+		}
+
+		.user-chip {
+			display: none;
 		}
 	}
 </style>
