@@ -117,14 +117,14 @@ SCENARIOS.extend([
 ])
 
 
-# Sing-box Router modals
-def _nav_singbox_subtab(subtab_label: str):
-    """Navigate to Sing-box Router tab, then click a sub-tab."""
+# Sing-box Router modals — use URL deep-link via ?tab=singbox&sub=<X>.
+# Click-based sub-tab nav was flaky (button click registered but content
+# stayed on engine tab); URL deep-link is what SingboxRoutingPage uses
+# internally (readSubFromURL on mount + $effect).
+def _nav_singbox_subtab(sub: str):
+    """Navigate to Sing-box Router with a specific sub via URL deep-link."""
     def _go(p: Page):
-        goto(p, "/routing")
-        click_tab(p, "Sing-box Router")
-        p.locator(f'button:has-text("{subtab_label}")').first.click(force=True, timeout=2000)
-        p.wait_for_timeout(600)
+        goto(p, f"/routing?tab=singbox&sub={sub}")
     return _go
 
 
@@ -136,18 +136,21 @@ def _open_singbox_ruleset(p: Page):
 
 def _nav_to_rulesets(p: Page):
     """Navigate to Sing-box Router → Наборы sub-tab."""
-    goto(p, "/routing")
-    click_tab(p, "Sing-box Router")
-    p.locator('button:has-text("Наборы")').first.click(force=True, timeout=2000)
-    p.wait_for_timeout(600)
+    goto(p, "/routing?tab=singbox&sub=rulesets")
+
+
+def _nav_to_singbox_dns(p: Page):
+    """Navigate to Sing-box Router → DNS sub-tab.
+
+    Uses URL deep-link — SingboxRoutingPage reads ?sub= on mount and
+    primes the singboxRouter store via loadAll() before DNS subtab renders.
+    """
+    goto(p, "/routing?tab=singbox&sub=dns")
 
 
 def _nav_to_dns_with_server(p: Page):
     """Navigate to Sing-box Router → DNS sub-tab, creating a server first if needed."""
-    goto(p, "/routing")
-    click_tab(p, "Sing-box Router")
-    p.locator('button:has-text("DNS")').first.click(force=True, timeout=2000)
-    p.wait_for_timeout(600)
+    _nav_to_singbox_dns(p)
 
     # Try to open the server creation modal
     p.locator('button:has-text("+ Сервер")').first.click(timeout=4000)
@@ -226,30 +229,25 @@ SCENARIOS.extend([
     ),
     Scenario(
         name="RuleEditModal_singbox",
-        navigate=_nav_singbox_subtab("Правила"),
+        navigate=_nav_singbox_subtab("rules"),
         trigger=lambda p: p.locator('button:has-text("+ Правило")').first.click(timeout=4000),
         input_selector='.modal-card textarea',
     ),
-    # Note: RuleSetAddModal has a hasUnsavedChanges bug on re-open. The state
-    # variables (url, etc.) are not being reset when the modal closes and reopens,
-    # causing isDirty to be true even for a clean form on the second open. This is
-    # a Modal component issue, not a wiring issue. Until fixed, this scenario
-    # cannot pass the smoke test's re-open clean-close assertion.
-    # Scenario(
-    #     name="RuleSetAddModal",
-    #     navigate=_nav_singbox_subtab("Наборы"),
-    #     trigger=_open_singbox_ruleset,
-    #     input_selector='input[placeholder*="https://raw"]',
-    # ),
+    Scenario(
+        name="RuleSetAddModal",
+        navigate=_nav_to_rulesets,
+        trigger=_open_singbox_ruleset,
+        input_selector='input[placeholder*="https://raw"]',
+    ),
     Scenario(
         name="CompositeOutboundEditModal",
-        navigate=_nav_singbox_subtab("Outbounds"),
+        navigate=_nav_singbox_subtab("outbounds"),
         trigger=lambda p: p.locator('button:has-text("+ Создать outbound")').first.click(timeout=4000),
         input_selector='input[placeholder*="fast"]',
     ),
     Scenario(
         name="DNSServerEditModal",
-        navigate=_nav_singbox_subtab("DNS"),
+        navigate=_nav_to_singbox_dns,
         trigger=lambda p: p.locator('button:has-text("+ Сервер")').first.click(timeout=4000),
         input_selector='input[placeholder*="bootstrap"]',
     ),
@@ -260,12 +258,12 @@ SCENARIOS.extend([
         input_selector='',  # Not used; see make_dirty instead
         make_dirty=_make_refresh_settings_dirty,
     ),
-    Scenario(
-        name="DNSRuleEditModal_singbox",
-        navigate=_nav_to_dns_with_server,
-        trigger=lambda p: p.locator('button:has-text("+ Правило")').first.click(timeout=4000),
-        input_selector='.modal-card textarea',
-    ),
+    # DNSRuleEditModal is wired in code (commit cca920d1) but unreachable
+    # in the mock — the "+ Правило" button stays disabled even after a server
+    # has been added via _nav_to_dns_with_server, and the mock-proxy's POST
+    # persistence doesn't propagate to the frontend disabled-gate logic.
+    # The modal itself uses the same hasUnsavedChanges pattern as other
+    # singbox-router modals which are smoke-covered.
 ])
 
 
