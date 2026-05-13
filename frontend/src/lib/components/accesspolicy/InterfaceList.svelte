@@ -186,29 +186,6 @@
 {/if}
 
 <style>
-	.confirm-content {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.confirm-warning {
-		color: var(--error);
-		font-size: 0.9375rem;
-		margin: 0;
-	}
-
-	.confirm-info {
-		color: var(--text-primary);
-		font-size: 0.9375rem;
-		margin: 0;
-	}
-
-	.confirm-detail {
-		color: var(--text-muted);
-		font-size: 0.8125rem;
-		margin: 0;
-	}
 	.iface-section {
 		display: flex;
 		flex-direction: column;

@@ -497,13 +497,6 @@
 		color: var(--text-muted);
 		font-size: 0.8125rem;
 	}
-	.confirm-hint code {
-		background: var(--bg-tertiary);
-		padding: 0 4px;
-		border-radius: 3px;
-		font-family: ui-monospace, monospace;
-		font-size: 0.75rem;
-	}
 
 	@media (max-width: 640px) {
 		.file-row {

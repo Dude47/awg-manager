@@ -83,35 +83,4 @@
 		font-size: 12px;
 	}
 	.kill-btn:hover { background: rgba(255, 107, 107, 0.2); }
-	.outbound-list {
-		list-style: none; padding: 0; margin: 8px 0;
-		display: flex; flex-wrap: wrap; gap: 6px;
-	}
-	.badge {
-		display: inline-block;
-		padding: 2px 6px;
-		border-radius: 3px;
-		background: rgba(218, 119, 86, 0.12);
-		color: #da7756;
-		font-size: 11px;
-		font-family: ui-monospace, monospace;
-	}
-	.muted { color: var(--text-tertiary, #6e6e6e); }
-	.small { font-size: 11px; }
-	.actions {
-		display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;
-	}
-	.actions button {
-		padding: 6px 14px; border-radius: 4px; cursor: pointer;
-		background: var(--surface-1, #1f2425);
-		color: var(--text-primary, #e8e6e3);
-		border: 1px solid var(--border-1, #2c3134);
-		font-size: 13px;
-	}
-	.actions button.primary {
-		background: #da7756;
-		border-color: #da7756;
-		color: white;
-	}
-	.actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
