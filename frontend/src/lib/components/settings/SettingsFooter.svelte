@@ -61,7 +61,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-		margin-top: 0.5rem;
 	}
 
 	.settings-footer-bar {

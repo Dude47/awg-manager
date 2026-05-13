@@ -31,6 +31,19 @@
             onclose();
         }
     }
+
+    // Portal action: moves the backdrop to <body> so it escapes any
+    // ancestor stacking context (e.g. position: sticky, transform, filter).
+    // Without this, an ancestor with z-index: auto becomes the cap of our
+    // z-index: 200 backdrop, letting later siblings paint on top of it.
+    function portal(node: HTMLElement) {
+        document.body.appendChild(node);
+        return {
+            destroy() {
+                if (node.parentNode) node.parentNode.removeChild(node);
+            },
+        };
+    }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -38,6 +51,7 @@
 {#if open}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
+        use:portal
         class="modal-backdrop"
         role="dialog"
         aria-modal="true"

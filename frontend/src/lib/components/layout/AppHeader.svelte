@@ -544,28 +544,8 @@
 		display: none;
 	}
 
-	@media (max-width: 768px) {
+	@media (max-width: 900px) {
 		.nav {
-			display: none;
-		}
-	}
-
-	@media (max-width: 640px) {
-		.app-header.unauthenticated .user-tools {
-			display: none;
-		}
-	}
-
-	@media (max-width: 640px) {
-		.header-inner {
-			grid-template-columns: 1fr auto;
-		}
-
-		.wordmark {
-			display: none;
-		}
-
-		.user-chip {
 			display: none;
 		}
 
@@ -614,6 +594,24 @@
 			color: var(--color-accent);
 			background: var(--color-accent-tint);
 			border-left: 3px solid var(--color-accent);
+		}
+	}
+
+	@media (max-width: 640px) {
+		.app-header.unauthenticated .user-tools {
+			display: none;
+		}
+
+		.header-inner {
+			grid-template-columns: 1fr auto;
+		}
+
+		.wordmark {
+			display: none;
+		}
+
+		.user-chip {
+			display: none;
 		}
 	}
 </style>

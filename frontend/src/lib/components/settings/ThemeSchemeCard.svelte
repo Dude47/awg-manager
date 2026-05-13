@@ -263,9 +263,14 @@
 	}
 
 	.theme-grid {
+		--theme-grid-max: 61rem;
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
 		gap: 0.75rem;
+		width: min(100%, var(--theme-grid-max));
+		max-width: 100%;
+		margin-inline-start: 0;
+		margin-inline-end: auto;
 	}
 
 	.theme-card {
@@ -524,9 +529,14 @@
 	}
 
 	.custom-grid {
+		--theme-custom-grid-max: 62.5rem;
 		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.75rem), 1fr));
 		gap: 0.75rem;
+		width: min(100%, var(--theme-custom-grid-max));
+		max-width: 100%;
+		margin-inline-start: 0;
+		margin-inline-end: auto;
 	}
 
 	.color-card {
@@ -580,9 +590,31 @@
 	}
 
 	@media (max-width: 980px) {
-		.theme-grid,
-		.custom-grid {
-			grid-template-columns: 1fr;
+		/* Узкая колонка настроек: компактное превью, прижато влево */
+		.theme-preview {
+			width: 100%;
+			max-width: 15rem;
+			margin-inline-start: 0;
+			margin-inline-end: auto;
+			min-height: 7rem;
+			padding: 0.5rem;
+			gap: 0.4rem;
+		}
+
+		.preview-metrics {
+			gap: 0.3rem;
+		}
+
+		.preview-pill {
+			height: 0.85rem;
+		}
+
+		.preview-panel {
+			height: 1.25rem;
+		}
+
+		.preview-panel.tall {
+			height: 1.6rem;
 		}
 	}
 
