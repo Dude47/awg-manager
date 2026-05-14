@@ -10,6 +10,7 @@
         triggerDelayCheck,
     } from '$lib/stores/singbox';
     import { subscriptionsStore } from '$lib/stores/subscriptions';
+    import { notifications } from '$lib/stores/notifications';
     import type { Subscription, SubscriptionMember } from '$lib/types';
     import { formatRelativeTime } from '$lib/utils/format';
     import SubscriptionMemberPicker from './SubscriptionMemberPicker.svelte';
@@ -394,7 +395,13 @@
                     class:server-btn-readonly={isURLTest}
                     onclick={(e) => {
                         e.stopPropagation();
-                        if (isURLTest) return;
+                        if (isURLTest) {
+                            notifications.info(
+                                'Включён автовыбор (URLTest). Чтобы выбирать сервер вручную, откройте подписку → вкладка «Настройки» → режим «Вручную».',
+                                { duration: 9000 },
+                            );
+                            return;
+                        }
                         pickerOpen = !pickerOpen;
                     }}
                     aria-haspopup={isURLTest ? undefined : 'listbox'}

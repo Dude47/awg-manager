@@ -162,8 +162,14 @@
 
 	async function pickActive(memberTag: string): Promise<void> {
 		// Urltest auto-selects fastest member; manual pick is rejected by backend
-		// with 409. Surface no error, just no-op the click.
-		if (subscription.mode === 'urltest') return;
+		// with 409. Tell the user how to switch to selector mode.
+		if (subscription.mode === 'urltest') {
+			notifications.info(
+				'Включён автовыбор (URLTest). Чтобы переключать сервер вручную, откройте вкладку «Настройки» этой подписки и выберите режим «Вручную».',
+				{ duration: 9000 },
+			);
+			return;
+		}
 		if (memberTag === subscription.activeMember) return;
 		switching = memberTag;
 		lastError = '';
