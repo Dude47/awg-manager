@@ -1,16 +1,20 @@
 <script lang="ts">
-	import { api } from '$lib/api/client';
+	import { Square, SquareCheckBig } from 'lucide-svelte';
 	import type { SingboxRouterPreset, SingboxRouterPresetCategory } from '$lib/types';
-	import type { OutboundGroup } from './outboundOptions';
 	import PresetIcon from './PresetIcon.svelte';
-	import PresetApplyModal from './PresetApplyModal.svelte';
 
 	interface Props {
 		presets: SingboxRouterPreset[];
-		outboundOptions: OutboundGroup[];
-		onApplied: () => Promise<void> | void;
+		selectedIds: Set<string>;
+		onToggleSelect: (id: string) => void;
+		onPresetClick: (p: SingboxRouterPreset) => void;
 	}
-	let { presets, outboundOptions, onApplied }: Props = $props();
+	let {
+		presets,
+		selectedIds,
+		onToggleSelect,
+		onPresetClick,
+	}: Props = $props();
 
 	type CategoryFilter = 'all' | SingboxRouterPresetCategory;
 
@@ -33,7 +37,6 @@
 		'block',
 	];
 
-	let selected = $state<SingboxRouterPreset | null>(null);
 	let showSensitive = $state(false);
 	let activeCategory = $state<CategoryFilter>('all');
 
@@ -42,6 +45,7 @@
 		if (p.featured) classes.push('card-featured');
 		if (p.rules.every((r) => r.actionTarget === 'reject')) classes.push('card-reject');
 		else if (p.rules.every((r) => r.actionTarget === 'direct')) classes.push('card-direct');
+		if (selectedIds.has(p.id)) classes.push('card-selected');
 		return classes.join(' ');
 	}
 
@@ -80,20 +84,39 @@
 	);
 </script>
 
-<div class="hint">Готовые наборы из SagerNet. Клик — добавить rule_set и правило в движок.</div>
+<div class="hint">Готовые наборы правил. Клик — добавить rule_set и правило в движок.</div>
 
 {#if featured.length > 0}
 	<div class="section-label">Рекомендуемые</div>
 	<div class="gallery">
 		{#each featured as p (p.id)}
-			<button class={cardClass(p)} onclick={() => (selected = p)} type="button">
-				<PresetIcon slug={p.iconSlug} size={44} />
-				<div class="card-body">
-					<div class="name">{p.name}</div>
-					{#if p.notice}<div class="featured-notice">{p.notice}</div>{/if}
-					<div class={`card-hint ${cardHintClass(p)}`}>{cardHint(p)}</div>
-				</div>
-			</button>
+			<div class={cardClass(p)}>
+				<button
+					type="button"
+					class="card-select"
+					aria-label={selectedIds.has(p.id) ? 'Снять выбор' : 'Выбрать'}
+					onclick={(e) => {
+						e.stopPropagation();
+						onToggleSelect(p.id);
+					}}
+				>
+					<span class="checkbox" class:checked={selectedIds.has(p.id)} aria-hidden="true">
+						{#if selectedIds.has(p.id)}
+							<SquareCheckBig size={20} />
+						{:else}
+							<Square size={20} />
+						{/if}
+					</span>
+				</button>
+				<button type="button" class="card-body-btn" onclick={() => onPresetClick(p)}>
+					<PresetIcon slug={p.iconSlug} size={44} />
+					<div class="card-body">
+						<div class="name">{p.name}</div>
+						{#if p.notice}<div class="featured-notice">{p.notice}</div>{/if}
+						<div class={`card-hint ${cardHintClass(p)}`}>{cardHint(p)}</div>
+					</div>
+				</button>
+			</div>
 		{/each}
 	</div>
 {/if}
@@ -129,14 +152,33 @@
 	{#if filtered.length > 0}
 		<div class="gallery">
 			{#each filtered as p (p.id)}
-				<button class={cardClass(p)} onclick={() => (selected = p)} type="button">
-					<PresetIcon slug={p.iconSlug} />
-					<div class="card-body">
-						<div class="name">{p.name}</div>
-						<div class="rs mono">{p.ruleSets[0]?.tag ?? ''}</div>
-						<div class={`card-hint ${cardHintClass(p)}`}>{cardHint(p)}</div>
-					</div>
-				</button>
+				<div class={cardClass(p)}>
+					<button
+						type="button"
+						class="card-select"
+						aria-label={selectedIds.has(p.id) ? 'Снять выбор' : 'Выбрать'}
+						onclick={(e) => {
+							e.stopPropagation();
+							onToggleSelect(p.id);
+						}}
+					>
+						<span class="checkbox" class:checked={selectedIds.has(p.id)} aria-hidden="true">
+							{#if selectedIds.has(p.id)}
+								<SquareCheckBig size={20} />
+							{:else}
+								<Square size={20} />
+							{/if}
+						</span>
+					</button>
+					<button type="button" class="card-body-btn" onclick={() => onPresetClick(p)}>
+						<PresetIcon slug={p.iconSlug} />
+						<div class="card-body">
+							<div class="name">{p.name}</div>
+							<div class="rs mono">{p.ruleSets[0]?.tag ?? ''}</div>
+							<div class={`card-hint ${cardHintClass(p)}`}>{cardHint(p)}</div>
+						</div>
+					</button>
+				</div>
 			{/each}
 		</div>
 	{:else}
@@ -154,30 +196,36 @@
 	{#if showSensitive}
 		<div class="gallery">
 			{#each sensitive as p (p.id)}
-				<button class={cardClass(p)} onclick={() => (selected = p)} type="button">
-					<PresetIcon slug={p.iconSlug} />
-					<div class="card-body">
-						<div class="name">{p.name}</div>
-						<div class="rs mono">{p.ruleSets[0]?.tag ?? ''}</div>
-						<div class={`card-hint ${cardHintClass(p)}`}>{cardHint(p)}</div>
-					</div>
-				</button>
+				<div class={cardClass(p)}>
+					<button
+						type="button"
+						class="card-select"
+						aria-label={selectedIds.has(p.id) ? 'Снять выбор' : 'Выбрать'}
+						onclick={(e) => {
+							e.stopPropagation();
+							onToggleSelect(p.id);
+						}}
+					>
+						<span class="checkbox" class:checked={selectedIds.has(p.id)} aria-hidden="true">
+							{#if selectedIds.has(p.id)}
+								<SquareCheckBig size={20} />
+							{:else}
+								<Square size={20} />
+							{/if}
+						</span>
+					</button>
+					<button type="button" class="card-body-btn" onclick={() => onPresetClick(p)}>
+						<PresetIcon slug={p.iconSlug} />
+						<div class="card-body">
+							<div class="name">{p.name}</div>
+							<div class="rs mono">{p.ruleSets[0]?.tag ?? ''}</div>
+							<div class={`card-hint ${cardHintClass(p)}`}>{cardHint(p)}</div>
+						</div>
+					</button>
+				</div>
 			{/each}
 		</div>
 	{/if}
-{/if}
-
-{#if selected}
-	<PresetApplyModal
-		preset={selected}
-		{outboundOptions}
-		onClose={() => (selected = null)}
-		onApply={async (id, outbound) => {
-			await api.singboxRouterApplyPreset(id, outbound);
-			selected = null;
-			await onApplied();
-		}}
-	/>
 {/if}
 
 <style>
@@ -199,17 +247,10 @@
 		gap: 0.5rem;
 	}
 	.card {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem;
+		position: relative;
 		background: var(--surface-bg);
 		border: 1px solid transparent;
 		border-radius: 6px;
-		cursor: pointer;
-		text-align: left;
-		font: inherit;
-		color: inherit;
 		transition: border-color 0.1s, background 0.1s;
 	}
 	.card:hover {
@@ -225,6 +266,45 @@
 	}
 	.card-direct {
 		border-color: var(--success, #22c55e);
+	}
+	.card-selected {
+		border-color: var(--accent, #3b82f6) !important;
+		background: rgba(59, 130, 246, 0.10);
+	}
+	.card-select {
+		all: unset;
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		padding: 6px;
+		cursor: pointer;
+		color: var(--muted-text);
+		z-index: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 4px;
+		line-height: 0;
+	}
+	.card-select:hover { color: var(--text); }
+	.checkbox {
+		display: inline-flex;
+		color: inherit;
+	}
+	.checkbox.checked {
+		color: var(--accent, #3b82f6);
+	}
+	.card-body-btn {
+		all: unset;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		width: 100%;
+		text-align: left;
+		color: inherit;
+		font: inherit;
 	}
 	.card-body {
 		flex: 1;

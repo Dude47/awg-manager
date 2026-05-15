@@ -1,6 +1,7 @@
 package internalpresets
 
 const sagerNetSiteRoot = "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/"
+const vernetteSRSRoot = "https://github.com/vernette/rulesets/raw/master/srs/"
 
 type Preset struct {
 	ID        string     `json:"id"`
@@ -46,23 +47,23 @@ func All() []Preset {
 
 	// Соцсети / мессенджеры
 	out = append(out,
-		simpleGeosite("youtube", "YouTube", CatSocial, "youtube"),
+		vernetteGeosite("youtube", "YouTube", CatSocial, "youtube", "youtube"),
 		simpleGeosite("google", "Google", CatSocial, "google"),
-		simpleGeosite("discord", "Discord", CatSocial, "discord"),
-		simpleGeosite("telegram", "Telegram", CatSocial, "telegram"),
+		vernetteGeosite("discord", "Discord", CatSocial, "discord", "discord-full"),
+		vernetteGeosite("telegram", "Telegram", CatSocial, "telegram", "telegram"),
 		// twitter renamed to x — slug, name, icon all reflect the rebrand.
-		simpleGeosite("x", "X (Twitter)", CatSocial, "x"),
+		vernetteGeosite("x", "X (Twitter)", CatSocial, "x", "x"),
 		simpleGeosite("facebook", "Facebook", CatSocial, "facebook"),
-		simpleGeosite("instagram", "Instagram", CatSocial, "instagram"),
-		simpleGeosite("tiktok", "TikTok", CatSocial, "tiktok"),
-		simpleGeosite("whatsapp", "WhatsApp", CatSocial, "whatsapp"),
+		vernetteGeosite("instagram", "Instagram", CatSocial, "instagram", "instagram"),
+		vernetteGeosite("tiktok", "TikTok", CatSocial, "tiktok", "tiktok"),
+		vernetteGeosite("whatsapp", "WhatsApp", CatSocial, "whatsapp", "whatsapp"),
 		simpleGeosite("signal", "Signal", CatSocial, "signal"),
 		simpleGeosite("reddit", "Reddit", CatSocial, "reddit"),
 	)
 
 	// Стриминг / медиа
 	out = append(out,
-		simpleGeosite("netflix", "Netflix", CatMedia, "netflix"),
+		vernetteGeosite("netflix", "Netflix", CatMedia, "netflix", "netflix"),
 		simpleGeosite("twitch", "Twitch", CatMedia, "twitch"),
 		simpleGeosite("spotify", "Spotify", CatMedia, "spotify"),
 		simpleGeosite("disney", "Disney+", CatMedia, "disney"),
@@ -95,20 +96,22 @@ func All() []Preset {
 
 	// AI
 	out = append(out,
-		simpleGeosite("openai", "OpenAI", CatAI, "openai"),
+		vernetteGeosite("openai", "OpenAI", CatAI, "openai", "openai"),
 		// anthropic preset covers claude.ai too — no separate "claude"
-		// slot since SagerNet does not publish a geosite-claude.srs.
-		simpleGeosite("anthropic", "Anthropic / Claude", CatAI, "anthropic"),
-		// SagerNet upstream slug is "google-gemini"; our user-facing ID
-		// stays "gemini" so the URL path is the only place the dash
-		// appears.
+		// slot. vernette publishes it as "claude.srs", but we keep our
+		// user-facing ID as "anthropic" for continuity.
+		vernetteGeosite("anthropic", "Anthropic / Claude", CatAI, "anthropic", "claude"),
+		// gemini: keep legacy tag "geosite-google-gemini" for backward
+		// compatibility with already-applied configs; URL migrates to vernette.
 		Preset{
 			ID: "gemini", Name: "Gemini",
 			Category: CatAI,
 			IconSlug: "googlegemini",
-			RuleSets: []RuleRef{{Tag: "geosite-google-gemini", URL: sagerNetSiteRoot + "geosite-google-gemini.srs"}},
+			RuleSets: []RuleRef{{Tag: "geosite-google-gemini", URL: vernetteSRSRoot + "gemini.srs"}},
 			Rules:    []RuleLink{{RuleSetRef: "geosite-google-gemini", ActionTarget: "tunnel"}},
 		},
+		vernetteGeosite("copilot", "GitHub Copilot", CatAI, "githubcopilot", "copilot"),
+		vernetteGeosite("grok", "Grok (xAI)", CatAI, "x", "grok"),
 		simpleGeosite("perplexity", "Perplexity", CatAI, "perplexity"),
 		Preset{
 			ID: "category-ai", Name: "Все AI сервисы",
@@ -125,6 +128,7 @@ func All() []Preset {
 		simpleGeosite("github", "GitHub", CatDeveloper, "github"),
 		simpleGeosite("gitlab", "GitLab", CatDeveloper, "gitlab"),
 		simpleGeosite("docker", "Docker", CatDeveloper, "docker"),
+		vernetteGeosite("linkedin", "LinkedIn", CatDeveloper, "lucide-briefcase-business", "linkedin"),
 	)
 
 	// Cloud / enterprise
@@ -149,7 +153,8 @@ func All() []Preset {
 		simpleGeosite("steam", "Steam", CatGaming, "steam"),
 		simpleGeosite("playstation", "PlayStation", CatGaming, "playstation"),
 		simpleGeosite("xbox", "Xbox", CatGaming, "xbox"),
-		simpleGeosite("roblox", "Roblox", CatGaming, "roblox"),
+		vernetteGeosite("roblox", "Roblox", CatGaming, "roblox", "roblox"),
+		vernetteGeosite("nintendo", "Nintendo", CatGaming, "lucide-gamepad-2", "nintendo"),
 	)
 
 	// Блокировка (action: reject)
@@ -162,6 +167,12 @@ func All() []Preset {
 			Rules:    []RuleLink{{RuleSetRef: "geosite-category-ads-all", ActionTarget: "reject"}},
 			Notice:   "Блокирует рекламу и трекеры через action:reject — выбор outbound не требуется",
 		},
+	)
+
+	// Региональные обходы блокировок
+	out = append(out,
+		vernetteGeosite("rkn", "Заблокировано в РФ", CatBlock, "lucide-shield-off", "rkn"),
+		vernetteGeosite("unavailable-in-russia", "Недоступно из РФ", CatBlock, "lucide-globe-lock", "unavailable-in-russia"),
 	)
 
 	// Sensitive (hidden by default; Category empty since the gallery
@@ -187,6 +198,23 @@ func simpleGeosite(slug, name, category, iconSlug string) Preset {
 		Category: category,
 		IconSlug: iconSlug,
 		RuleSets: []RuleRef{{Tag: tag, URL: sagerNetSiteRoot + tag + ".srs"}},
+		Rules:    []RuleLink{{RuleSetRef: tag, ActionTarget: "tunnel"}},
+	}
+}
+
+// vernetteGeosite creates a preset whose rule_set URL points at the
+// vernette/rulesets repository. The internal tag stays "geosite-<id>"
+// for backward compatibility with already-applied configs in 20-router.json.
+// vernetteFile is the file basename in the repo (without .srs extension),
+// which may differ from id (e.g. "discord-full" for the discord preset).
+func vernetteGeosite(id, name, category, iconSlug, vernetteFile string) Preset {
+	tag := "geosite-" + id
+	return Preset{
+		ID:       id,
+		Name:     name,
+		Category: category,
+		IconSlug: iconSlug,
+		RuleSets: []RuleRef{{Tag: tag, URL: vernetteSRSRoot + vernetteFile + ".srs"}},
 		Rules:    []RuleLink{{RuleSetRef: tag, ActionTarget: "tunnel"}},
 	}
 }
