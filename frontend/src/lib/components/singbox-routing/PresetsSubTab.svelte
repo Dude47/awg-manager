@@ -37,6 +37,7 @@
 
 	let selectedIds = $state<Set<string>>(new Set());
 	let modalPresets = $state<SingboxRouterPreset[] | null>(null);
+	let pendingApplyPresets = $state<SingboxRouterPreset[] | null>(null);
 	let createDnsModalOpen = $state(false);
 	let confirmResetOpen = $state(false);
 
@@ -104,8 +105,17 @@
 	}
 
 	function openCreateDnsServer(): void {
+		pendingApplyPresets = modalPresets;
 		closeApplyModal();
 		createDnsModalOpen = true;
+	}
+
+	function closeCreateDnsServer(): void {
+		createDnsModalOpen = false;
+		if (pendingApplyPresets) {
+			modalPresets = pendingApplyPresets;
+			pendingApplyPresets = null;
+		}
 	}
 
 	function handleResetPolicyName(): void {
@@ -160,11 +170,11 @@
 	<DNSServerEditModal
 		servers={dnsServers}
 		{outboundOptions}
-		onClose={() => (createDnsModalOpen = false)}
+		onClose={closeCreateDnsServer}
 		onSave={async (server) => {
 			await api.singboxRouterAddDNSServer(server);
-			createDnsModalOpen = false;
 			await singboxRouter.loadAll();
+			closeCreateDnsServer();
 		}}
 	/>
 {/if}
