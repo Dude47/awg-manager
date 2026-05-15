@@ -2,21 +2,22 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: $0 <mipsel-3.4|mips-3.4|aarch64-3.10>" >&2
+    echo "Usage: $0 <mipsel-3.4|mips-3.4|aarch64-3.10> [sing-box-version]" >&2
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 ENTWARE_ARCH="${1:-}"
-if [[ -z "$ENTWARE_ARCH" || $# -ne 1 ]]; then
+SINGBOX_VERSION_ARG="${2:-}"
+if [[ -z "$ENTWARE_ARCH" || $# -lt 1 || $# -gt 2 ]]; then
     usage
     exit 1
 fi
 
 REQUIRED_VERSION_FILE="$PROJECT_ROOT/internal/singbox/installer/embedded.go"
 DEFAULT_SINGBOX_VERSION="$(sed -n 's/^const RequiredVersion = "\(.*\)"/\1/p' "$REQUIRED_VERSION_FILE")"
-SINGBOX_VERSION="${SINGBOX_VERSION:-$DEFAULT_SINGBOX_VERSION}"
+SINGBOX_VERSION="${SINGBOX_VERSION_ARG:-${SINGBOX_VERSION:-$DEFAULT_SINGBOX_VERSION}}"
 SINGBOX_REF="${SINGBOX_REF:-v$SINGBOX_VERSION}"
 SINGBOX_GO="${SINGBOX_GO:-go}"
 CRONET_GO_DIR="${CRONET_GO_DIR:-$HOME/cronet-go}"

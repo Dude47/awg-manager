@@ -55,13 +55,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          ./scripts/build-singbox.sh mipsel-3.4
-          ./scripts/build-singbox.sh mips-3.4
-          ./scripts/build-singbox.sh aarch64-3.10
+          ./scripts/build-singbox.sh mipsel-3.4 1.14.0-alpha.24
+          ./scripts/build-singbox.sh mips-3.4 1.14.0-alpha.24
+          ./scripts/build-singbox.sh aarch64-3.10 1.14.0-alpha.24
 
-          ./scripts/build-ipk.sh mipsel-3.4
-          ./scripts/build-ipk.sh mips-3.4
-          ./scripts/build-ipk.sh aarch64-3.10
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          IPK_VERSION="$(cat VERSION)+r${BUILD_NUMBER}"
+
+          ./scripts/build-ipk.sh "$IPK_VERSION" mipsel-3.4
+          ./scripts/build-ipk.sh "$IPK_VERSION" mips-3.4
+          ./scripts/build-ipk.sh "$IPK_VERSION" aarch64-3.10
 
   pre-release:
     name: Pre-release
