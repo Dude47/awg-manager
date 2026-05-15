@@ -37,6 +37,7 @@ const SLUGS_FROM_SIMPLE_ICONS = [
 	'docker',
 	'facebook',
 	'github',
+	'githubcopilot',
 	'gitlab',
 	'google',
 	'googlegemini',

@@ -128,7 +128,7 @@ func All() []Preset {
 		simpleGeosite("github", "GitHub", CatDeveloper, "github"),
 		simpleGeosite("gitlab", "GitLab", CatDeveloper, "gitlab"),
 		simpleGeosite("docker", "Docker", CatDeveloper, "docker"),
-		vernetteGeosite("linkedin", "LinkedIn", CatDeveloper, "linkedin", "linkedin"),
+		vernetteGeosite("linkedin", "LinkedIn", CatDeveloper, "lucide-briefcase-business", "linkedin"),
 	)
 
 	// Cloud / enterprise
@@ -154,7 +154,7 @@ func All() []Preset {
 		simpleGeosite("playstation", "PlayStation", CatGaming, "playstation"),
 		simpleGeosite("xbox", "Xbox", CatGaming, "xbox"),
 		vernetteGeosite("roblox", "Roblox", CatGaming, "roblox", "roblox"),
-		vernetteGeosite("nintendo", "Nintendo", CatGaming, "nintendoswitch", "nintendo"),
+		vernetteGeosite("nintendo", "Nintendo", CatGaming, "lucide-gamepad-2", "nintendo"),
 	)
 
 	// Блокировка (action: reject)
