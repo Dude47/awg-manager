@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui';
+	import { Button, ConfirmModal } from '$lib/components/ui';
 	import { api } from '$lib/api/client';
+	import { notifications } from '$lib/stores/notifications';
+	import { tunnels as tunnelsStore } from '$lib/stores/tunnels';
 	import type { AWGTunnel, TunnelListItem } from '$lib/types';
 	import {
 		parseAWG,
@@ -24,6 +26,8 @@
 	import { onMount } from 'svelte';
 
 	let raw = $state('');
+	let lastAnalyzedRaw = $state('');
+	let loadedTunnelRaw = $state('');
 	let error = $state('');
 	let parsed: AwgParsed | null = $state(null);
 	let version: AwgVersionInfo | null = $state(null);
@@ -39,6 +43,9 @@
 	let tunnelsLoading = $state(false);
 	let tunnelLoading = $state(false);
 	let tunnelLoadError = $state('');
+
+	let savingTunnel = $state(false);
+	let confirmSaveOpen = $state(false);
 
 	function analyze() {
 		error = '';
@@ -72,6 +79,7 @@
 			verdict = ver;
 			fixes = f;
 			camouflage = cam;
+			lastAnalyzedRaw = t;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
@@ -79,6 +87,8 @@
 
 	function clearAll() {
 		raw = '';
+		lastAnalyzedRaw = '';
+		loadedTunnelRaw = '';
 		error = '';
 		parsed = null;
 		version = null;
@@ -129,6 +139,157 @@
 		return lines.filter((line) => line !== '').join('\n');
 	}
 
+	function numOrCurrent(value: string | undefined, current: number): number {
+		const n = value !== undefined && value !== '' ? Number(value) : NaN;
+		return Number.isFinite(n) ? n : current;
+	}
+
+	function strOrCurrent(value: string | undefined, current: string): string {
+		const v = value?.trim();
+		return v ? v : current;
+	}
+
+	function emptyToUndefined(value: string | undefined): string | undefined {
+		const v = value?.trim();
+		return v ? v : undefined;
+	}
+
+	function optionalStrOrCurrent(value: string | undefined, current: string | undefined): string | undefined {
+		if (value === undefined) return current;
+		const v = value.trim();
+		return v ? v : undefined;
+	}
+
+	function parsedToTunnelUpdate(current: AWGTunnel, parsed: AwgParsed): Partial<AWGTunnel> {
+		const iface = parsed.iface;
+		const peer = parsed.peer;
+
+		return {
+			interface: {
+				...current.interface,
+
+				privateKey: strOrCurrent(iface.privatekey, current.interface.privateKey),
+				address: strOrCurrent(iface.address, current.interface.address),
+				mtu: numOrCurrent(iface.mtu, current.interface.mtu),
+				dns: iface.dns === undefined ? current.interface.dns : emptyToUndefined(iface.dns),
+
+				jc: numOrCurrent(iface.jc, current.interface.jc),
+				jmin: numOrCurrent(iface.jmin, current.interface.jmin),
+				jmax: numOrCurrent(iface.jmax, current.interface.jmax),
+
+				s1: numOrCurrent(iface.s1, current.interface.s1),
+				s2: numOrCurrent(iface.s2, current.interface.s2),
+				s3: numOrCurrent(iface.s3, current.interface.s3),
+				s4: numOrCurrent(iface.s4, current.interface.s4),
+
+				h1: strOrCurrent(iface.h1, current.interface.h1),
+				h2: strOrCurrent(iface.h2, current.interface.h2),
+				h3: strOrCurrent(iface.h3, current.interface.h3),
+				h4: strOrCurrent(iface.h4, current.interface.h4),
+
+				i1: optionalStrOrCurrent(iface.i1, current.interface.i1),
+				i2: optionalStrOrCurrent(iface.i2, current.interface.i2),
+				i3: optionalStrOrCurrent(iface.i3, current.interface.i3),
+				i4: optionalStrOrCurrent(iface.i4, current.interface.i4),
+				i5: optionalStrOrCurrent(iface.i5, current.interface.i5),
+			},
+			peer: {
+				...current.peer,
+
+				publicKey: strOrCurrent(peer.publickey, current.peer.publicKey),
+				presharedKey: optionalStrOrCurrent(peer.presharedkey, current.peer.presharedKey),
+				endpoint: strOrCurrent(peer.endpoint, current.peer.endpoint),
+
+				allowedIPs:
+					peer.allowedips !== undefined && peer.allowedips.trim() !== ''
+						? peer.allowedips.split(',').map((s) => s.trim()).filter(Boolean)
+						: current.peer.allowedIPs,
+
+				persistentKeepalive:
+					peer.persistentkeepalive !== undefined && peer.persistentkeepalive !== ''
+						? numOrCurrent(peer.persistentkeepalive, current.peer.persistentKeepalive ?? 25)
+						: current.peer.persistentKeepalive,
+			},
+		};
+	}
+
+	let rawChangedSinceAnalyze = $derived(
+		parsed !== null && raw.trim() !== lastAnalyzedRaw
+	);
+
+	let rawDiffersFromLoadedTunnel = $derived(
+		!!selectedTunnelId &&
+		loadedTunnelRaw !== '' &&
+		raw.trim() !== loadedTunnelRaw
+	);
+
+	let canSave = $derived(
+		!!selectedTunnelId &&
+		parsed !== null &&
+		!error &&
+		!savingTunnel &&
+		!rawChangedSinceAnalyze &&
+		rawDiffersFromLoadedTunnel
+	);
+
+	function saveToTunnel() {
+		if (!selectedTunnelId) return;
+		confirmSaveOpen = true;
+	}
+
+	async function doSaveToTunnel() {
+		if (!selectedTunnelId) return;
+
+		if (raw.trim() !== lastAnalyzedRaw) {
+			confirmSaveOpen = false;
+			notifications.error('Конфиг изменён после анализа. Нажмите «Анализировать» перед записью в туннель.');
+			return;
+		}
+
+		if (loadedTunnelRaw !== '' && raw.trim() === loadedTunnelRaw) {
+			confirmSaveOpen = false;
+			notifications.error('Изменений относительно выбранного туннеля нет.');
+			return;
+		}
+
+		savingTunnel = true;
+		try {
+			const currentRaw = raw.trim();
+			if (!currentRaw) {
+				throw new Error('Вставьте содержимое .conf файла AmneziaWG / WireGuard');
+			}
+
+			const freshParsed = parseAWG(currentRaw);
+			const current = await api.getTunnel(selectedTunnelId);
+			const update = parsedToTunnelUpdate(current, freshParsed);
+			await tunnelsStore.update(selectedTunnelId, update);
+
+			const v = detectVersion(freshParsed.iface);
+			const c = runChecks(freshParsed.iface, freshParsed.peer, v);
+			const s = calcScores(c, freshParsed.iface, v);
+			const f = buildFixes(c, freshParsed.iface, freshParsed.peer, v);
+			version = v;
+			checks = c;
+			awgScores = s;
+			fixes = f;
+			verdict = getVerdict(s.total);
+			camouflage = camouflageFromI1(freshParsed.iface);
+			parsed = freshParsed;
+			error = '';
+			tunnelLoadError = '';
+			lastAnalyzedRaw = currentRaw;
+			loadedTunnelRaw = currentRaw;
+
+			notifications.success('Конфиг записан в туннель');
+			confirmSaveOpen = false;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+			notifications.error(e instanceof Error ? e.message : 'Ошибка сохранения');
+		} finally {
+			savingTunnel = false;
+		}
+	}
+
 	async function analyzeSelectedTunnel() {
 		if (!selectedTunnelId) {
 			tunnelLoadError = 'Выберите туннель';
@@ -140,7 +301,9 @@
 
 		try {
 			const tunnel = await api.getTunnel(selectedTunnelId);
-			raw = awgTunnelToConf(tunnel);
+			const conf = awgTunnelToConf(tunnel);
+			loadedTunnelRaw = conf.trim();
+			raw = conf;
 			analyze();
 		} catch (e) {
 			tunnelLoadError = e instanceof Error ? e.message : String(e);
@@ -155,6 +318,8 @@
 		if (!file) return;
 		const reader = new FileReader();
 		reader.onload = () => {
+			loadedTunnelRaw = '';
+			selectedTunnelId = '';
 			raw = String(reader.result ?? '').trim();
 			analyze();
 		};
@@ -168,6 +333,8 @@
 		if (!file) return;
 		const reader = new FileReader();
 		reader.onload = () => {
+			loadedTunnelRaw = '';
+			selectedTunnelId = '';
 			raw = String(reader.result ?? '').trim();
 			analyze();
 		};
@@ -317,8 +484,24 @@
 				<Button variant="primary" onclick={analyze}>Анализировать</Button>
 				<Button variant="secondary" onclick={() => fileInput?.click()}>Файл…</Button>
 				<Button variant="ghost" onclick={clearAll}>Очистить</Button>
+				{#if canSave}
+					<Button variant="outline-primary" onclick={saveToTunnel} loading={savingTunnel}>
+						Записать в туннель
+					</Button>
+				{/if}
 				<span class="kbd">⌘/Ctrl+Enter</span>
 			</div>
+			{#if selectedTunnelId && rawChangedSinceAnalyze}
+				<div class="warn" role="status">
+					Конфиг изменён после анализа. Нажмите «Анализировать» перед записью в туннель.
+				</div>
+			{/if}
+			{#if selectedTunnelId && parsed !== null && !rawChangedSinceAnalyze && !rawDiffersFromLoadedTunnel}
+				<div class="warn" role="status">
+					Изменений относительно выбранного туннеля нет — записывать нечего.
+				</div>
+			{/if}
+
 			<input
 				bind:this={fileInput}
 				type="file"
@@ -529,6 +712,18 @@
 		</div>
 	</div>
 </div>
+
+<ConfirmModal
+	open={confirmSaveOpen}
+	title="Записать конфиг в туннель?"
+	message="Вы собираетесь перезаписать параметры выбранного туннеля данными из поля конфига."
+	secondary="Будут обновлены параметры Interface и Peer. Если туннель сейчас работает, для применения изменений может потребоваться перезапуск. Действие необратимо без ручного восстановления старого конфига."
+	confirmLabel="Записать"
+	variant="danger"
+	busy={savingTunnel}
+	onConfirm={doSaveToTunnel}
+	onClose={() => !savingTunnel && (confirmSaveOpen = false)}
+/>
 
 <style>
 	.shell {
