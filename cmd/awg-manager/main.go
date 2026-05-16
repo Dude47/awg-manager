@@ -805,7 +805,7 @@ func main() {
 		&singboxAndSubLister{op: singboxOp, sub: subSvc},
 		eventBus,
 	)
-	singboxHandler := api.NewSingboxHandler(singboxOp, eventBus, delayChecker, testService)
+	singboxHandler := api.NewSingboxHandler(singboxOp, eventBus, delayChecker, testService, loggingService)
 	clashProxy := api.NewClashProxy(singboxOp)
 	singboxConnsHandler := api.NewSingboxConnectionsHandler(ndmsQueries.Hotspot)
 
@@ -1067,8 +1067,9 @@ func main() {
 		_, err := subSvc.Refresh(ctx, id)
 		return err
 	})
+	subSched.SetAppLogger(loggingService)
 	subSched.Start(context.Background())
-	srv.SetSubscriptionHandler(api.NewSubscriptionHandler(subSvc, singboxOp))
+	srv.SetSubscriptionHandler(api.NewSubscriptionHandler(subSvc, singboxOp, loggingService))
 	srv.AddShutdownHook(subSched.Stop)
 
 	// Boot status: 0 = booting, 1 = done. Used by /api/system/info.

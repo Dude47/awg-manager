@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/hoaxisr/awg-manager/internal/events"
+	"github.com/hoaxisr/awg-manager/internal/logging"
 	"github.com/hoaxisr/awg-manager/internal/response"
 	"github.com/hoaxisr/awg-manager/internal/singbox"
 	"github.com/hoaxisr/awg-manager/internal/testing"
@@ -75,13 +76,24 @@ type SingboxHandler struct {
 	bus          *events.Bus
 	delayChecker *singbox.DelayChecker
 	testingSvc   *testing.Service
+	log          *logging.ScopedLogger
 }
 
 var errTunnelNoInterface = errors.New("tunnel has no kernel interface")
 
 // NewSingboxHandler creates a new singbox handler.
-func NewSingboxHandler(op *singbox.Operator, bus *events.Bus, dc *singbox.DelayChecker, ts *testing.Service) *SingboxHandler {
-	return &SingboxHandler{op: op, bus: bus, delayChecker: dc, testingSvc: ts}
+func NewSingboxHandler(op *singbox.Operator, bus *events.Bus, dc *singbox.DelayChecker, ts *testing.Service, appLogger ...logging.AppLogger) *SingboxHandler {
+	var lg logging.AppLogger
+	if len(appLogger) > 0 {
+		lg = appLogger[0]
+	}
+	return &SingboxHandler{
+		op:           op,
+		bus:          bus,
+		delayChecker: dc,
+		testingSvc:   ts,
+		log:          logging.NewScopedLogger(lg, logging.GroupSingbox, logging.SubSBRuntime),
+	}
 }
 
 // DelayCheck handles POST /api/singbox/tunnels/delay-check?tag=X.
@@ -220,6 +232,7 @@ func (h *SingboxHandler) Control(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, "invalid request", "INVALID_REQUEST")
 		return
 	}
+	h.log.Info("single-control", "", "requested action="+req.Action)
 	if err := h.op.Control(r.Context(), req.Action); err != nil {
 		response.Error(w, err.Error(), "SINGBOX_CONTROL_ERROR")
 		return
@@ -321,6 +334,7 @@ func (h *SingboxHandler) AddTunnels(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	h.log.Info("single-add", "", "requested via API")
 	added, errs, err := h.op.AddTunnels(r.Context(), body.Links)
 	if err != nil {
 		response.InternalError(w, err.Error())
@@ -400,6 +414,7 @@ func (h *SingboxHandler) UpdateTunnel(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "tag required")
 		return
 	}
+	h.log.Info("single-update", tag, "requested via API")
 	if err := h.op.UpdateTunnel(r.Context(), tag, body.Outbound); err != nil {
 		response.InternalError(w, err.Error())
 		return
@@ -688,6 +703,7 @@ func (h *SingboxHandler) DeleteTunnel(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "tag required")
 		return
 	}
+	h.log.Info("single-remove", tag, "requested via API")
 	if err := h.op.RemoveTunnel(r.Context(), tag); err != nil {
 		response.InternalError(w, err.Error())
 		return
