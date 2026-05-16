@@ -16,6 +16,7 @@
 		ServerRail,
 		type RailItem,
 	} from '$lib/components/servers';
+	import { dedupBy } from '$lib/utils/dedupBy';
 
 	let unsub: (() => void) | undefined;
 	onMount(() => { unsub = servers.subscribe(() => {}); });
@@ -72,7 +73,7 @@
 				kind: 'system',
 			});
 		}
-		return items;
+		return dedupBy(items, (i) => i.id, { warnTag: 'server rail' });
 	});
 
 	// Default to empty; the effect below snaps to the first item once the rail loads
