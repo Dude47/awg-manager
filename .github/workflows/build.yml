@@ -61,6 +61,7 @@ jobs:
 
           BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           IPK_VERSION="$(cat VERSION)+r${BUILD_NUMBER}"
+          printf '%s\n' "$IPK_VERSION" > dist/VERSION
 
           ./scripts/build-ipk.sh "$IPK_VERSION" mipsel-3.4
           ./scripts/build-ipk.sh "$IPK_VERSION" mips-3.4
@@ -90,7 +91,7 @@ jobs:
           set -euo pipefail
 
           shopt -s nullglob
-          files=(./dist/awg-manager_* ./dist/sing-box-*)
+          files=(./dist/awg-manager_* ./dist/sing-box-* ./dist/VERSION)
 
           if (( ${#files[@]} == 0 )); then
             echo "No release files found in ./dist"
