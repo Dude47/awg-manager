@@ -4,6 +4,9 @@ dist/
 /awg-manager
 .gocache/
 *.test
+kmod/awg-proxy/out/awg-proxy-build.log
+kmod/awg-proxy/tests/__pycache__/
+kmod/awg-proxy/tests/test_cps
 
 # IDE
 .idea/
