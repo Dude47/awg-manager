@@ -171,7 +171,7 @@ func All() []Preset {
 
 	// Региональные обходы блокировок
 	out = append(out,
-		vernetteGeosite("rkn", "Заблокировано в РФ", CatBlock, "lucide-shield-off", "rkn"),
+		vernetteGeosite("rkn", "Заблокировано в РФ", CatBlock, "rkn", "rkn"),
 		vernetteGeosite("unavailable-in-russia", "Недоступно из РФ", CatBlock, "lucide-globe-lock", "unavailable-in-russia"),
 	)
 

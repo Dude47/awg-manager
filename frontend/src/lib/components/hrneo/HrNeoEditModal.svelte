@@ -358,7 +358,7 @@
 	<div class="preset-bar">
 		<div class="preset-bar-left">
 			{#if selectedPreset}
-				<ServiceIcon name={selectedPreset.name} size={24} />
+				<ServiceIcon name={selectedPreset.name} iconSlug={selectedPreset.id} size={24} />
 				<div class="preset-bar-info">
 					<div class="preset-bar-name">{selectedPreset.name}</div>
 					<div class="preset-bar-meta">{selectedPreset.domains?.length ?? 0} записей</div>
@@ -377,7 +377,7 @@
 		<div class="preset-catalog">
 			{#each usablePresets as p (p.id)}
 				<button type="button" class="preset-card" onclick={() => applyPreset(p)}>
-					<ServiceIcon name={p.name} size={36} />
+					<ServiceIcon name={p.name} iconSlug={p.id} size={36} />
 					<div class="preset-card-body">
 						<div class="preset-card-name">{p.name}</div>
 						<div class="preset-card-meta">{p.domains?.length ?? 0} записей</div>

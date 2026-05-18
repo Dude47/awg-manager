@@ -204,17 +204,51 @@ export const SERVICE_PRESETS: ServicePreset[] = [
 		],
 	},
 	{
+		id: 'atlassian',
+		name: 'Atlassian',
+		domains: [
+			'atl-paas.net',
+			'atlassian.com',
+			'ss-inf.net',
+			'atlassian.net',
+			'jira.com',
+			'bitbucket.org',
+			'atlassian-dev.net',
+			'confluence.com',
+		],
+	},
+	{
+		id: 'ubisoft',
+		name: 'Ubisoft',
+		domains: [
+			'ubi.com',
+			'ubisoft.com',
+			'ubisoftconnect.com',
+			'uplay.com',
+			'ubisoft-uplay-savegames.s3.amazonaws.com',
+			'ubisoft-orbit-savegames.s3.amazonaws.com',
+			'ubistatic1-a.akamaihd.net',
+			'ubisoft.siteintercept.qualtrics.com',
+			'uplaypc-s-ubisoft.cdn.ubi.com',
+			// IP blocks (network bases → /24 for NDMS subnet rules)
+			'52.202.184.0/24',
+			'203.132.26.0/24',
+			'92.122.79.0/24',
+			'52.223.17.0/24',
+			'52.21.118.0/24',
+			'3.218.57.0/24',
+			'2.19.213.0/24',
+		],
+	},
+	{
 		id: 'dev-tools',
 		name: 'Dev Tools',
-		covers: ['github'],
+		covers: ['github', 'atlassian'],
 		domains: [
 			// GitHub / Cursor / AI tooling
 			'applicationinsights.io', 'context7.com', 'cursor-cdn.com', 'cursor.com',
 			'cursor.sh', 'cursorapi.com', 'exp-tas.com', 'github.com',
 			'githubcopilot.com', 'githubusercontent.com', 'wakatime.com',
-			// Atlassian / Bitbucket
-			'atl-paas.net', 'atlassian-dev.net', 'atlassian.com', 'atlassian.net',
-			'bitbucket.io', 'bitbucket.org', 'jira.com', 'ss-inf.net', 'statuspage.io',
 			// Languages / package registries
 			'awg.go', 'bootstrap.pypa.io', 'bun.sh', 'crates.io', 'deno.land',
 			'golang.org', 'gradle.org', 'maven.org', 'npm.community',

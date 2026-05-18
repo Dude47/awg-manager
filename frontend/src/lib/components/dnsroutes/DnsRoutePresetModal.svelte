@@ -117,7 +117,7 @@
                 {#if preset.notice}
                     <span class="preset-notice-mark" aria-label="warning">⚠</span>
                 {/if}
-                <ServiceIcon name={preset.name} size={40} />
+                <ServiceIcon name={preset.name} iconSlug={preset.id} size={40} />
                 <span class="preset-name">{preset.name}</span>
             </button>
         {/each}

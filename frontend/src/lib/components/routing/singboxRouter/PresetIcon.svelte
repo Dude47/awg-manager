@@ -15,6 +15,7 @@
 		GlobeLock,
 	} from 'lucide-svelte';
 	import { brandIcons } from '$lib/generated/brandIcons';
+	import { getPresetInlineIcon, type ServiceIconConfig } from '$lib/utils/service-icons';
 
 	interface Props {
 		slug?: string;
@@ -38,7 +39,12 @@
 		kind: 'instagram';
 	}
 
-	type ResolvedIcon = BrandIconResolved | LucideIcon | InstagramIcon | null;
+	interface InlineIcon {
+		kind: 'inline';
+		config: ServiceIconConfig;
+	}
+
+	type ResolvedIcon = BrandIconResolved | LucideIcon | InstagramIcon | InlineIcon | null;
 
 	const lucideMap: Record<string, { component: typeof CircleSlash; bg: string }> = {
 		'lucide-circle-slash': { component: CircleSlash, bg: '#dc2626' },
@@ -58,6 +64,10 @@
 
 	const resolved = $derived.by((): ResolvedIcon => {
 		if (!slug) return null;
+		const inline = getPresetInlineIcon(slug);
+		if (inline) {
+			return { kind: 'inline', config: inline };
+		}
 		const lucide = lucideMap[slug];
 		if (lucide) {
 			return { kind: 'lucide', component: lucide.component, bg: lucide.bg };
@@ -70,6 +80,13 @@
 			return { kind: 'brand', path: brand.path, hex: '#' + brand.hex };
 		}
 		return null;
+	});
+
+	const inlineInnerSize = $derived.by(() => {
+		if (resolved?.kind !== 'inline') return 0;
+		const cfg = resolved.config;
+		if (cfg.assetSrc && cfg.assetFit === 'cover') return size;
+		return Math.round(size * (cfg.scale ?? 0.56));
 	});
 </script>
 
@@ -86,6 +103,28 @@
 		{@const Component = resolved.component}
 		<div class="brand" style="background:{resolved.bg}">
 			<Component size={Math.floor(size * 0.56)} color="white" />
+		</div>
+	{:else if resolved.kind === 'inline'}
+		<div class="brand" style="background:{resolved.config.background}">
+			{#if resolved.config.assetSrc}
+				<img
+					class="asset"
+					class:cover={resolved.config.assetFit === 'cover'}
+					src={resolved.config.assetSrc}
+					alt=""
+					width={inlineInnerSize}
+					height={inlineInnerSize}
+					style:filter={resolved.config.assetFilter ?? 'none'}
+				/>
+			{:else}
+				<svg
+					viewBox={resolved.config.viewBox ?? '0 0 24 24'}
+					width={inlineInnerSize}
+					height={inlineInnerSize}
+				>
+					{@html resolved.config.svg ?? ''}
+				</svg>
+			{/if}
 		</div>
 	{:else if resolved.kind === 'instagram'}
 		<div class="brand ig">
@@ -112,6 +151,14 @@
 	}
 	.brand.ig {
 		background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+	}
+	.brand .asset {
+		object-fit: contain;
+	}
+	.brand .asset.cover {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 	.fallback {
 		width: 100%;

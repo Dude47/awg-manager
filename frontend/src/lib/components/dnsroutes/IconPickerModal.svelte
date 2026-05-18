@@ -4,8 +4,8 @@
 		QURE_ICONS,
 		QURE_CDN_BASE,
 		qureIconUrl,
-		qureMatchByName,
 	} from '$lib/generated/qureIcons';
+	import { resolveIconSlug } from '$lib/utils/resolve-icon-slug';
 
 	interface Props {
 		open: boolean;
@@ -24,8 +24,7 @@
 	let selectedQure = $state<string | null>(null);
 	let customUrl = $state('');
 
-	// Cached Qure match by ruleName — used by both init effect and the hint.
-	let autoMatch = $derived(iconUrl ? null : qureMatchByName(ruleName));
+	let defaultSlug = $derived(iconUrl ? null : resolveIconSlug(ruleName));
 	let trimmedUrl = $derived(customUrl.trim());
 
 	// Initialize state when the modal opens, based on current iconUrl + ruleName.
@@ -46,10 +45,9 @@
 			customUrl = iconUrl;
 			selectedQure = null;
 		} else {
-			// No iconUrl — try auto-match by rule name
 			tab = 'catalog';
 			customUrl = '';
-			selectedQure = autoMatch;
+			selectedQure = null;
 		}
 	});
 
@@ -78,10 +76,10 @@
 		onapply(null);
 	}
 
-	let autoMatchHint = $derived.by(() => {
-		if (iconUrl) return null;
-		return autoMatch && tab === 'catalog' && selectedQure === autoMatch
-			? `Авто-найдено по имени правила «${ruleName}»`
+	let defaultIconHint = $derived.by(() => {
+		if (iconUrl || tab !== 'catalog' || selectedQure !== null) return null;
+		return defaultSlug
+			? `Без выбора используется встроенная иконка (${defaultSlug}), как в SingBox`
 			: null;
 	});
 </script>
@@ -125,8 +123,8 @@
 				</span>
 			</div>
 
-			{#if autoMatchHint}
-				<p class="auto-hint">{autoMatchHint}</p>
+			{#if defaultIconHint}
+				<p class="auto-hint">{defaultIconHint}</p>
 			{/if}
 
 			<div class="grid">
