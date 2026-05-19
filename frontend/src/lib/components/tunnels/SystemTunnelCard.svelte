@@ -11,9 +11,10 @@
 		view?: 'cards' | 'compact' | 'list';
 		onMarkServer?: (id: string) => void;
 		ondetail?: (id: string) => void;
+		ontest: (id: string, name: string) => void;
 	}
 
-	let { tunnel, view = 'cards', onMarkServer, ondetail }: Props = $props();
+	let { tunnel, view = 'cards', onMarkServer, ondetail, ontest }: Props = $props();
 
 	let connectivity = $state<ConnectivityResult | null>(null);
 	let checking = $state(false);
@@ -102,6 +103,12 @@
 	let inlineTxRate = $derived(txRates.length > 0 ? txRates[txRates.length - 1] : 0);
 
 	let listStatusText = $derived(tunnel.status === 'up' ? (tunnel.peer?.online ? 'Активен' : 'Без handshake') : 'Выключен');
+
+	let displayName = $derived(tunnel.description || tunnel.id);
+
+	function openTest(): void {
+		ontest(tunnel.id, displayName);
+	}
 </script>
 
 {#if view === 'list'}
@@ -223,9 +230,15 @@
 		<div class="list-cell list-cell-actions">
 			<div class="actions-row list-actions-row">
 				<Button variant="ghost" size="sm" href="/system-tunnels/{tunnel.id}">Изменить</Button>
-				<Button variant="ghost" size="sm" href="/system-tunnels/{tunnel.id}/test">Тест</Button>
+
+				<span class="system-action-test">
+					<Button variant="ghost" size="sm" onclick={openTest}>Тест</Button>
+				</span>
+
 				{#if onMarkServer}
-					<Button variant="ghost" size="sm" onclick={() => onMarkServer?.(tunnel.id)}>В серверы</Button>
+					<span class="system-action-primary">
+						<Button variant="ghost" size="sm" onclick={() => onMarkServer?.(tunnel.id)}>В серверы</Button>
+					</span>
 				{/if}
 			</div>
 		</div>
@@ -453,28 +466,32 @@
 					Изменить
 				</Button>
 
-				<Button variant="ghost" href="/system-tunnels/{tunnel.id}/test">
-					{#snippet iconBefore()}
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-							<polyline points="22,4 12,14.01 9,11.01"/>
-						</svg>
-					{/snippet}
-					Тест
-				</Button>
-
-				{#if onMarkServer}
-					<Button variant="ghost" onclick={() => onMarkServer?.(tunnel.id)}>
+				<span class="system-action-test">
+					<Button variant="ghost" onclick={openTest}>
 						{#snippet iconBefore()}
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-								<rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-								<line x1="6" y1="6" x2="6.01" y2="6"/>
-								<line x1="6" y1="18" x2="6.01" y2="18"/>
+								<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+								<polyline points="22,4 12,14.01 9,11.01"/>
 							</svg>
 						{/snippet}
-						В серверы
+						Тест
 					</Button>
+				</span>
+
+				{#if onMarkServer}
+					<span class="system-action-primary">
+						<Button variant="ghost" onclick={() => onMarkServer?.(tunnel.id)}>
+							{#snippet iconBefore()}
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+									<rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+									<line x1="6" y1="6" x2="6.01" y2="6"/>
+									<line x1="6" y1="18" x2="6.01" y2="18"/>
+								</svg>
+							{/snippet}
+							В серверы
+						</Button>
+					</span>
 				{/if}
 			</div>
 		</div>
@@ -1091,6 +1108,32 @@
 
 	.card.view-compact .actions-row {
 		justify-content: flex-end;
+	}
+
+	.system-action-test,
+	.system-action-primary {
+		display: inline-flex;
+	}
+
+	.system-action-test :global(.btn:hover:not(:disabled):not(.is-disabled)) {
+		color: var(--color-success);
+		background: var(--color-success-tint);
+	}
+
+	.system-action-primary :global(.btn:hover:not(:disabled):not(.is-disabled)) {
+		color: var(--color-accent);
+		background: var(--color-accent-tint);
+	}
+
+	.list-actions-row .system-action-test,
+	.list-actions-row .system-action-primary {
+		display: flex;
+		align-self: stretch;
+	}
+
+	.list-actions-row .system-action-test :global(.btn),
+	.list-actions-row .system-action-primary :global(.btn) {
+		width: 100%;
 	}
 
 	@media (max-width: 1080px) {

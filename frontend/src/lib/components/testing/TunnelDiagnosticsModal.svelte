@@ -2,7 +2,7 @@
 	import { Modal } from '$lib/components/ui';
 	import TunnelDiagnosticsPanel from './TunnelDiagnosticsPanel.svelte';
 
-	type DiagnosticsKind = 'awg' | 'singbox' | 'subscription';
+	type DiagnosticsKind = 'awg' | 'system' | 'singbox' | 'subscription';
 	type DiagnosticsSubjectLabel = 'туннель' | 'подписку';
 
 	interface Props {
@@ -31,6 +31,7 @@
 
 	let diagnosticsTitlePrefix = $derived.by(() => {
 		if (kind === 'awg') return 'AWG';
+		if (kind === 'system') return 'AWG';
 		if (kind === 'singbox') return 'Sing-box';
 		return 'Subscription';
 	});

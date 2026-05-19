@@ -12,7 +12,7 @@
 	import { FormToggle, Button, Dropdown, SpeedGauge, type DropdownOption } from '$lib/components/ui';
 	import { PageContainer } from '$lib/components/layout';
 
-	type DiagnosticsKind = 'awg' | 'singbox' | 'subscription';
+	type DiagnosticsKind = 'awg' | 'system' | 'singbox' | 'subscription';
 	type DiagnosticsSubjectLabel = 'туннель' | 'подписку';
 	type DiagnosticsMode = 'page' | 'modal';
 
@@ -141,6 +141,7 @@
 
 	let diagnosticsTitlePrefix = $derived.by(() => {
 		if (kind === 'awg') return 'AWG';
+		if (kind === 'system') return 'AWG';
 		if (kind === 'singbox') return 'Sing-box';
 		return 'subscription';
 	});
@@ -174,6 +175,8 @@
 		try {
 			if (kind === 'awg') {
 				connectivityResult = await api.checkConnectivity(targetId);
+			} else if (kind === 'system') {
+				connectivityResult = await api.checkSystemTunnelConnectivity(targetId);
 			} else if (kind === 'subscription') {
 				connectivityResult = await api.singboxCheckConnectivity(targetId, iface);
 			} else {
@@ -207,6 +210,8 @@
 		try {
 			if (kind === 'awg') {
 				ipResult = await api.checkIP(targetId, serviceURL || undefined);
+			} else if (kind === 'system') {
+				ipResult = await api.checkSystemTunnelIP(targetId, serviceURL || undefined);
 			} else if (kind === 'subscription') {
 				ipResult = await api.singboxCheckIP(targetId, serviceURL || undefined, iface);
 			} else {
@@ -278,6 +283,35 @@
 		currentBandwidth = 0;
 		currentSecond = 0;
 		notifications.info('Тест скорости отменён');
+	}
+
+	function runSystemStreamPhase(
+		server: string,
+		port: number,
+		direction: 'download' | 'upload',
+	): Promise<SpeedTestResult> {
+		return new Promise((resolve, reject) => {
+			currentBandwidth = 0;
+			currentSecond = 0;
+			activeEventSource = api.systemTunnelSpeedTestStream(
+				targetId,
+				server,
+				port,
+				direction,
+				(interval) => {
+					currentBandwidth = interval.bandwidth;
+					currentSecond = interval.second;
+				},
+				(result) => {
+					activeEventSource = null;
+					resolve(result);
+				},
+				(error) => {
+					activeEventSource = null;
+					reject(new Error(error));
+				},
+			);
+		});
 	}
 
 	function runAwgStreamPhase(
@@ -381,10 +415,12 @@
 		currentBandwidth = 0;
 		currentSecond = 0;
 
-		if (kind === 'awg') {
+		if (kind === 'awg' || kind === 'system') {
+			const runPhase = kind === 'system' ? runSystemStreamPhase : runAwgStreamPhase;
+
 			speedPhase = 'download';
 			try {
-				downloadResult = await runAwgStreamPhase(server, port, 'download');
+				downloadResult = await runPhase(server, port, 'download');
 			} catch (e) {
 				const raw = e instanceof Error ? e.message : 'Ошибка теста скорости';
 				speedError = friendlyError(raw);
@@ -396,7 +432,7 @@
 			currentBandwidth = 0;
 			currentSecond = 0;
 			try {
-				uploadResult = await runAwgStreamPhase(server, port, 'upload');
+				uploadResult = await runPhase(server, port, 'upload');
 			} catch (e) {
 				const raw = e instanceof Error ? e.message : 'Ошибка теста скорости';
 				speedError = friendlyError(raw);

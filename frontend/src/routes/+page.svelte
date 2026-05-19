@@ -142,7 +142,7 @@
 
 	let detailId = $state<string | null>(null);
 	let singboxDetailTag = $state<string | null>(null);
-	let awgDiagnosticsTarget = $state<{ id: string; name: string } | null>(null);
+	let awgDiagnosticsTarget = $state<{ id: string; name: string; kind: 'awg' | 'system' } | null>(null);
 	let endpointVisibility = $state<Record<string, boolean>>({});
 
 	function endpointVisibilityKey(scope: EndpointScope, id: string): string {
@@ -190,8 +190,8 @@
 		history.replaceState(history.state, '', url);
 	}
 
-	function openAwgDiagnostics(id: string, name: string): void {
-		awgDiagnosticsTarget = { id, name };
+	function openAwgDiagnostics(id: string, name: string, kind: 'awg' | 'system' = 'awg'): void {
+		awgDiagnosticsTarget = { id, name, kind };
 	}
 
 	function closeAwgDiagnostics(): void {
@@ -1563,22 +1563,36 @@
 									{tunnel.status === 'up' && tunnel.uptime ? formatDuration(tunnel.uptime) : '—'}
 								</div>
 								<div class="awg-list-cell awg-list-cell-actions" data-label="Действия">
-									<a class="awg-action-btn" href="/system-tunnels/{tunnel.id}" title="Изменить туннель «{tunnel.description || tunnel.id}»">
+									<a
+										class="awg-action-btn"
+										href="/system-tunnels/{tunnel.id}"
+										title="Изменить туннель «{tunnel.description || tunnel.id}»"
+										aria-label="Изменить туннель «{tunnel.description || tunnel.id}»"
+									>
 										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-										Изменить
 									</a>
-									<a class="awg-action-btn" href="/system-tunnels/{tunnel.id}/test" title="Тест туннеля «{tunnel.description || tunnel.id}»">
+									<button
+										type="button"
+										class="awg-action-btn awg-action-test"
+										title="Тест туннеля «{tunnel.description || tunnel.id}»"
+										aria-label="Тест туннеля «{tunnel.description || tunnel.id}»"
+										onclick={() => openAwgDiagnostics(tunnel.id, tunnel.description || tunnel.id, 'system')}
+									>
 										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>
-										Тест
-									</a>
-									<button type="button" class="awg-action-btn" onclick={() => markAsServer(tunnel.id)}>
+									</button>
+									<button
+										type="button"
+										class="awg-action-btn awg-action-primary"
+										title="Перенести туннель «{tunnel.description || tunnel.id}» в серверы"
+										aria-label="Перенести туннель «{tunnel.description || tunnel.id}» в серверы"
+										onclick={() => markAsServer(tunnel.id)}
+									>
 										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 											<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
 											<rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
 											<line x1="6" y1="6" x2="6.01" y2="6"/>
 											<line x1="6" y1="18" x2="6.01" y2="18"/>
 										</svg>
-										В серверы
 									</button>
 								</div>
 							</div>
@@ -1695,6 +1709,7 @@
 							view={awgEffectiveViewMode}
 							onMarkServer={markAsServer}
 							ondetail={(id) => openDetail(id)}
+							ontest={(id, name) => openAwgDiagnostics(id, name, 'system')}
 						/>
 					{/each}
 				</div>
@@ -2102,7 +2117,7 @@
 {#if awgDiagnosticsTarget}
 	<TunnelDiagnosticsModal
 		open={true}
-		kind="awg"
+		kind={awgDiagnosticsTarget.kind}
 		targetId={awgDiagnosticsTarget.id}
 		displayName={awgDiagnosticsTarget.name}
 		subjectLabel="туннель"
@@ -2681,6 +2696,11 @@
 	.awg-action-test:hover:not(:disabled) {
 		color: var(--color-success);
 		background: var(--color-success-tint);
+	}
+
+	.awg-action-primary:hover:not(:disabled) {
+		color: var(--color-accent);
+		background: var(--color-accent-tint);
 	}
 
 	.awg-action-spinner {
