@@ -3,7 +3,7 @@
 	import type { SystemTunnel, ConnectivityResult } from '$lib/types';
 	import { api } from '$lib/api/client';
 	import { formatRelativeTime, formatDuration, formatBytes, formatBitRate } from '$lib/utils/format';
-	import { TrafficChart, TrafficSparkline, Button, Badge } from '$lib/components/ui';
+	import { TrafficChart, TrafficSparkline, Button, Badge, PingButton } from '$lib/components/ui';
 	import { getTrafficRates, subscribeTraffic, loadHistory } from '$lib/stores/traffic';
 
 	interface Props {
@@ -104,6 +104,22 @@
 
 	let listStatusText = $derived(tunnel.status === 'up' ? (tunnel.peer?.online ? 'Активен' : 'Без handshake') : 'Выключен');
 
+	let isDenseCard = $derived(view === 'cards');
+	let isCompactCard = $derived(view === 'compact');
+
+	type ConnectivityState = 'idle' | 'connected' | 'disconnected' | 'checking';
+	let connState = $derived.by<ConnectivityState>(() => {
+		if (tunnel.status !== 'up' || checkDisabled) return 'idle';
+		if (checking || connectivity === null) return 'checking';
+		return connectivity.connected ? 'connected' : 'disconnected';
+	});
+	let latencyMs = $derived(connectivity?.latency ?? null);
+	let showConnectivityRow = $derived(tunnel.status === 'up');
+	let showPingButton = $derived(showConnectivityRow && !checkDisabled);
+	let compactStatusHint = $derived(
+		isCompactCard && tunnel.status === 'up' && !tunnel.peer?.online ? 'Без handshake' : '',
+	);
+
 	let displayName = $derived(tunnel.description || tunnel.id);
 
 	function openTest(): void {
@@ -128,10 +144,15 @@
 				<span class="led {ledClass}"></span>
 				<span class="list-status-text">{listStatusText}</span>
 			</div>
-			{#if tunnel.status === 'up'}
+			{#if showConnectivityRow}
 				<div class="connectivity-row">
-					{#if !checkDisabled && connectivity?.connected}
-						<span class="latency-value">{connectivity.latency}ms</span>
+					{#if showPingButton}
+						<PingButton
+							connectivity={connState}
+							{latencyMs}
+							checking={checking}
+							onclick={checkConnectivity}
+						/>
 					{/if}
 					<button
 						class="connectivity-gear"
@@ -143,34 +164,6 @@
 							<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
 						</svg>
 					</button>
-					{#if !checkDisabled}
-						<button
-							class="connectivity-btn"
-							class:connected={connectivity?.connected}
-							class:disconnected={connectivity !== null && !connectivity.connected}
-							class:checking
-							onclick={checkConnectivity}
-							title={connectivity?.connected ? 'Связь OK' : connectivity !== null ? 'Нет связи' : 'Проверка связи...'}
-						>
-							{#if checking}
-								<span class="connectivity-spinner"></span>
-							{:else if connectivity?.connected}
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-									<path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-									<path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-									<path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-									<circle cx="12" cy="20" r="1" fill="currentColor"/>
-								</svg>
-							{:else}
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-									<line x1="2" y1="2" x2="22" y2="22"/>
-									<path d="M8.5 16.5a5 5 0 0 1 7 0"/>
-									<path d="M2 8.82a15 15 0 0 1 4.17-2.65"/>
-									<path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/>
-								</svg>
-							{/if}
-						</button>
-					{/if}
 				</div>
 			{/if}
 		</div>
@@ -251,84 +244,108 @@
 		class:view-compact={view === 'compact'}
 		class:view-dense={view === 'cards'}
 	>
-		<!-- Header: name + badge + LED + connectivity -->
-		<div class="flex justify-between items-start gap-3">
-			<div class="flex flex-col gap-1 min-w-0">
-				{#if view === 'cards'}
+		<!-- Header: name + status + connectivity -->
+		{#if isDenseCard}
+			<div class="header header-dense">
+				<div class="header-dense-body">
 					<div class="title-line-dense">
-						<h3 class="tunnel-name tunnel-name-dense" title={tunnel.description || tunnel.id}>
-							{tunnel.description || tunnel.id}
-						</h3>
-						<span class="tunnel-protocol">system</span>
+						<button
+							type="button"
+							class="tunnel-name tunnel-name-dense"
+							title={displayName}
+							onclick={() => ondetail?.(tunnel.id)}
+						>
+							{displayName}
+						</button>
 					</div>
 					<div class="meta-tags-dense">
 						<Badge variant="info" size="sm">Системный</Badge>
 						<span class="iface-chip-dense" title={tunnel.interfaceName}>{tunnel.interfaceName}</span>
 					</div>
-				{:else}
-					<h3 class="tunnel-name" title={tunnel.description || tunnel.id}>{tunnel.description || tunnel.id}</h3>
-					<div class="flex items-center gap-2 flex-wrap">
+				</div>
+				<div class="dense-toolbar">
+					{#if showConnectivityRow}
+						<div class="dense-toolbar-bottom">
+							<span class="led {ledClass}"></span>
+							{#if showPingButton}
+								<PingButton
+									connectivity={connState}
+									{latencyMs}
+									checking={checking}
+									size="sm"
+									onclick={checkConnectivity}
+								/>
+							{/if}
+							<button
+								class="connectivity-gear"
+								class:gear-disabled={checkDisabled}
+								onclick={toggleCheckDisabled}
+								title={checkDisabled ? 'Проверка связности выключена. Нажмите для включения' : 'Выключить проверку связности'}
+							>
+								<svg width="11" height="11" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+									<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+								</svg>
+							</button>
+						</div>
+					{:else}
+						<div class="dense-toolbar-top">
+							<span class="led {ledClass}"></span>
+						</div>
+					{/if}
+				</div>
+			</div>
+		{:else}
+			<div class="header">
+				<div class="head-left">
+					<div class="title-line">
+						<button
+							type="button"
+							class="tunnel-name"
+							title={displayName}
+							onclick={() => ondetail?.(tunnel.id)}
+						>
+							{displayName}
+						</button>
+					</div>
+					<div class="meta-line">
 						<span class="iface-name">{tunnel.interfaceName}</span>
 						<span class="version-badge badge-system">Системный</span>
 					</div>
-				{/if}
-			</div>
-			<div
-				class="shrink-0"
-				class:flex={view !== 'cards'}
-				class:flex-col={view !== 'cards'}
-				class:items-end={view !== 'cards'}
-				class:gap-1.5={view !== 'cards'}
-				class:dense-head-controls={view === 'cards'}
-			>
-				<span class="led {ledClass}"></span>
-				{#if tunnel.status === 'up'}
-					<div class:flex={view !== 'cards'} class:items-center={view !== 'cards'} class:gap-1.5={view !== 'cards'} class:contents={view === 'cards'}>
-						{#if !checkDisabled && connectivity?.connected}
-							<span class="latency-value">{connectivity.latency}ms</span>
-						{/if}
-						<button
-							class="connectivity-gear"
-							class:gear-disabled={checkDisabled}
-							onclick={toggleCheckDisabled}
-							title={checkDisabled ? 'Проверка связности выключена. Нажмите для включения' : 'Выключить проверку связности'}
-						>
-							<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
-								<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-							</svg>
-						</button>
-						{#if !checkDisabled}
+					{#if compactStatusHint}
+						<span class="status-hint-left">{compactStatusHint}</span>
+					{/if}
+				</div>
+				<div class="head-right">
+					{#if showConnectivityRow}
+						<div class="connectivity-row">
+							<span class="led {ledClass}"></span>
+							{#if showPingButton}
+								<PingButton
+									connectivity={connState}
+									{latencyMs}
+									checking={checking}
+									onclick={checkConnectivity}
+								/>
+							{/if}
 							<button
-								class="connectivity-btn"
-								class:connected={connectivity?.connected}
-								class:disconnected={connectivity !== null && !connectivity.connected}
-								class:checking
-								onclick={checkConnectivity}
-								title={connectivity?.connected ? 'Связь OK' : connectivity !== null ? 'Нет связи' : 'Проверка связи...'}
+								class="connectivity-gear"
+								class:gear-disabled={checkDisabled}
+								onclick={toggleCheckDisabled}
+								title={checkDisabled ? 'Проверка связности выключена. Нажмите для включения' : 'Выключить проверку связности'}
 							>
-								{#if checking}
-									<span class="connectivity-spinner"></span>
-								{:else if connectivity?.connected}
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-										<path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-										<path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-										<path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-										<circle cx="12" cy="20" r="1" fill="currentColor"/>
-									</svg>
-								{:else}
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-										<line x1="2" y1="2" x2="22" y2="22"/>
-										<path d="M8.5 16.5a5 5 0 0 1 7 0"/>
-										<path d="M2 8.82a15 15 0 0 1 4.17-2.65"/>
-										<path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/>
-									</svg>
-								{/if}
+								<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+									<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+								</svg>
 							</button>
-						{/if}
-					</div>
-				{/if}
+						</div>
+					{:else}
+						<div class="led-row">
+							<span class="led {ledClass}"></span>
+						</div>
+					{/if}
+				</div>
 			</div>
-		</div>
+		{/if}
 
 		<!-- Details: endpoint + via + IPv4 + uptime + handshake -->
 		<div class="details">
@@ -660,19 +677,9 @@
 		white-space: nowrap;
 	}
 
-	.tunnel-protocol {
-		flex-shrink: 0;
-		font-size: 10px;
-		font-weight: 500;
-		font-family: var(--font-mono, monospace);
-		color: var(--text-muted);
-		white-space: nowrap;
-		text-transform: lowercase;
-	}
-
 	.meta-tags-dense {
 		display: flex;
-		flex-wrap: nowrap;
+		flex-wrap: wrap;
 		margin-top: 4px;
 		align-items: center;
 		gap: 3px;
@@ -705,22 +712,113 @@
 		text-overflow: ellipsis;
 	}
 
-	.card.view-dense .dense-head-controls {
+	.header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 10px;
+	}
+
+	.header.header-dense {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: flex-start;
+		gap: 6px;
+	}
+
+	.header-dense-body {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
+	}
+
+	.head-left {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+	}
+
+	.title-line {
 		display: flex;
 		align-items: center;
-		gap: 3px;
+		gap: 8px;
+		min-width: 0;
 	}
 
-	.card.view-dense .dense-head-controls .latency-value {
-		font-size: 10px;
-		line-height: 1;
+	.head-right {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 4px;
+		flex-shrink: 0;
 	}
 
-	.card.view-dense .dense-head-controls .connectivity-gear,
-	.card.view-dense .dense-head-controls .connectivity-btn {
-		width: 18px;
-		height: 18px;
+	.led-row {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+	}
+
+	.dense-toolbar {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		flex-shrink: 0;
+	}
+
+	.dense-toolbar-top {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.dense-toolbar-bottom {
+		display: flex;
+		align-items: center;
+		/* gap: 2px; */
+	}
+
+	.meta-line {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.connectivity-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.connectivity-row .led,
+	.dense-toolbar-bottom .led {
+		flex-shrink: 0;
+	}
+
+	.card.view-dense .dense-toolbar-bottom .connectivity-gear {
+		width: 16px;
+		height: 16px;
 		padding: 0;
+	}
+
+	.card.view-dense .dense-toolbar-top .led,
+	.card.view-dense .dense-toolbar .led {
+		width: 6px;
+		height: 6px;
+	}
+
+	.card.view-compact .led {
+		width: 8px;
+		height: 8px;
+	}
+
+	.status-hint-left {
+		align-self: flex-start;
+		font-size: 11px;
+		color: var(--color-warning, var(--warning, #f59e0b));
 	}
 
 	.details-dense-cols {
@@ -850,15 +948,27 @@
 
 	/* Tunnel name */
 	.tunnel-name {
-		font-size: 1rem;
+		background: none;
+		border: none;
+		padding: 0;
+		font: inherit;
+		font-size: 15px;
 		font-weight: 600;
+		color: var(--color-text-primary, var(--text-primary));
+		text-align: left;
+		cursor: pointer;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		min-width: 0;
+	}
+
+	.tunnel-name:hover {
+		color: var(--color-accent, var(--accent));
 	}
 
 	.card.view-compact .tunnel-name {
-		font-size: 0.95rem;
+		font-size: 14px;
 	}
 
 	.iface-name {
@@ -905,56 +1015,6 @@
 	.led-gray {
 		background: var(--text-muted, #6b7280);
 		box-shadow: none;
-	}
-
-	/* Latency */
-	.latency-value {
-		font-variant-numeric: tabular-nums;
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--success);
-	}
-
-	/* Connectivity button */
-	.connectivity-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		border: none;
-		border-radius: 6px;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		background: var(--bg-tertiary);
-		color: var(--text-muted);
-	}
-
-	.connectivity-btn:hover {
-		background: var(--border);
-	}
-
-	.connectivity-btn.connected {
-		background: rgba(16, 185, 129, 0.15);
-		color: var(--success);
-	}
-
-	.connectivity-btn.disconnected {
-		background: rgba(239, 68, 68, 0.15);
-		color: var(--error);
-	}
-
-	.connectivity-spinner {
-		width: 10px;
-		height: 10px;
-		border: 2px solid currentColor;
-		border-top-color: transparent;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
 	}
 
 	/* Eye toggle */

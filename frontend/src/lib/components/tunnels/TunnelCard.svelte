@@ -1104,12 +1104,12 @@ import { PingButton } from '$lib/components/ui';
 	.dense-toolbar-bottom {
 		display: flex;
 		align-items: center;
-		gap: 2px;
+		/* gap: 2px; */
 	}
 
 	.meta-tags-dense {
 		display: flex;
-		flex-wrap: nowrap;
+		flex-wrap: wrap;
 		align-items: center;
 		margin-top: 3px;
 		gap: 3px;

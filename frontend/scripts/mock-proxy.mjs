@@ -109,7 +109,7 @@ const MOCK_AWG_TUNNELS = [
 		resolvedIspInterfaceLabel: 'Резервный WAN',
 		endpoint: 'nl-ams.demo.example:51820',
 		address: '10.9.0.2/32',
-		interfaceName: 'awg1',
+		interfaceName: 'OpkgTun0',
 		ndmsName: 'Wireguard1',
 		rxBytes: 88_201_442,
 		txBytes: 22_781_930,
