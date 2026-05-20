@@ -109,13 +109,13 @@
 	}
 
 	function sourceLabel(rs: SingboxRouterRuleSet): string {
-		if (rs.type === 'inline') return `${rs.rules?.length ?? 0} правил`;
+		if (rs.type === 'inline') return String(rs.rules?.length ?? 0);
 		if (rs.type === 'remote') return rs.url ?? '';
 		return rs.path ?? '';
 	}
 
 	function sourceFieldLabel(rs: SingboxRouterRuleSet): string {
-		if (rs.type === 'inline') return 'Содержимое';
+		if (rs.type === 'inline') return 'Групп правил';
 		if (rs.type === 'remote') return 'URL';
 		return 'Путь';
 	}

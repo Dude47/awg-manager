@@ -1736,6 +1736,25 @@ const mockSingboxRuleSets = [
 	{ tag: 'geosite-discord', type: 'remote', format: 'binary', url: 'https://cdn.example.com/geosite-discord.srs', update_interval: '24h', download_detour: 'direct' },
 	{ tag: 'geosite-github', type: 'remote', format: 'binary', url: 'https://cdn.example.com/geosite-github.srs', update_interval: '24h', download_detour: 'direct' },
 	{ tag: 'geoip-ru', type: 'remote', format: 'binary', url: 'https://cdn.example.com/geoip-ru.srs', update_interval: '24h', download_detour: 'direct' },
+	{
+		tag: 'inline-neo-demo',
+		type: 'inline',
+		rules: [
+			{
+				domain: ['claude.ai'],
+				domain_suffix: [
+					'chatgpt.com',
+					'openai.com',
+					'gemini.google.com',
+					'xn--h1aaemethbj4a4h.xn--p1ai',
+					'.perplexity.ai',
+					'deepseek.com',
+				],
+				domain_keyword: ['youtube'],
+			},
+			{ ip_cidr: ['1.1.1.1/32', '8.8.8.0/24'] },
+		],
+	},
 ];
 
 const mockSingboxPresets = [

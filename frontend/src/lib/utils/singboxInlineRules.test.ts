@@ -193,8 +193,13 @@ describe('parseInlineRuleList', () => {
 		expect(rules).toEqual([{ domain_suffix: ['.example.com'] }]);
 	});
 
-	it('handles domain_suffix: bare host as dotted suffix', () => {
+	it('handles domain_suffix: bare host as no-dot suffix', () => {
 		const { rules } = parseInlineRuleList('domain_suffix:example.com');
+		expect(rules).toEqual([{ domain_suffix: ['example.com'] }]);
+	});
+
+	it('keeps explicit dotted domain_suffix as dotted suffix', () => {
+		const { rules } = parseInlineRuleList('domain_suffix:.example.com');
 		expect(rules).toEqual([{ domain_suffix: ['.example.com'] }]);
 	});
 

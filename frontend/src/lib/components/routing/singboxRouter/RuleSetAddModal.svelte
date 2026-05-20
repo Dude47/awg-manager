@@ -183,6 +183,12 @@ geosite:xai`;
 		inlineModeBusy = true;
 		try {
 			if (next === 'json' && inlineMode === 'list') {
+				if (isInlineRuleListEmpty(rulesList)) {
+					rulesJson = DEFAULT_RULES_JSON;
+					inlineMode = 'json';
+					return;
+				}
+
 				const { text: expanded, warnings: geoWarn } = await expandGeoLinesInInput(
 					rulesList,
 					async (kind, tag) => {
@@ -483,8 +489,7 @@ geosite:xai`;
 					</button>
 					<button
 						class:active={inlineMode === 'json'}
-						disabled={inlineModeBusy || (inlineMode === 'list' && listInputEmpty)}
-						title={inlineMode === 'list' && listInputEmpty ? 'Добавьте хотя бы одну строку в список' : undefined}
+						disabled={inlineModeBusy}
 						onclick={() => void switchInlineMode('json')}
 						type="button"
 					>
@@ -571,10 +576,9 @@ geosite:xai`;
 						<section class="inline-help-section">
 							<div class="help-label">Домены и поддомены</div>
 							<ul>
-								<li><code>domain.com</code> → хост и его поддомены (хранится в JSON как <code>domain_suffix</code> без точки)</li>
-								<li><code>*.domain.com</code> → то же самое</li>
+								<li><code>domain.com</code>, <code>*.domain.com</code>, <code>domain_suffix:domain.com</code> → хост и его поддомены (в JSON: <code>"domain.com"</code> без точки)</li>
 								<li><code>https://example.domain.com/…</code> — из URL берётся hostname и хранится так же</li>
-								<li><code>*.рф</code> — доменная зона (если текст содержит кириллицу, то будет конвертирован в punycode <code>.xn--p1ai</code>)</li>
+								<li><code>*.рф</code> — доменная зона; кириллица будет конвертирована в punycode <code>xn--p1ai</code> без ведущей точки</li>
 							</ul>
 						</section>
 
@@ -582,7 +586,7 @@ geosite:xai`;
 							<div class="help-label">Только поддомены (без отдельного <code>domain</code>)</div>
 							<ul>
 								<li><code>.domain.com</code> — суффикс <em>с</em> точкой в JSON: <code>[".domain.com"]</code> (apex не матчится)</li>
-								<li><code>domain_suffix:domain.com</code> — тоже: в JSON будет <code>".domain.com"</code></li>
+								<li><code>domain_suffix:.domain.com</code> — явная dotted-форма, в JSON будет <code>".domain.com"</code></li>
 							</ul>
 						</section>
 
@@ -684,12 +688,22 @@ geosite:xai`;
 		{/if}
 
 		{#if error}<div class="error">{error}</div>{/if}
-
-		<div class="actions">
-			<button class="btn btn-secondary" onclick={onClose} type="button">Отмена</button>
-			<button class="btn btn-primary" onclick={save} disabled={busy || inlineModeBusy} type="button">Сохранить</button>
-		</div>
 	</div>
+
+	{#snippet actions()}
+		<Button variant="danger" size="md" onclick={onClose}>
+			Отмена
+		</Button>
+		<Button
+			variant="success"
+			size="md"
+			onclick={save}
+			disabled={busy || inlineModeBusy}
+			loading={busy || inlineModeBusy}
+		>
+			Сохранить
+		</Button>
+	{/snippet}
 </Modal>
 
 <style>
@@ -849,6 +863,11 @@ geosite:xai`;
 		background: var(--surface-1, rgba(255, 255, 255, 0.035));
 		font-size: 0.82rem;
 		line-height: 1.4;
+		max-height: min(12rem, 32vh);
+		overflow: auto;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		min-width: 0;
 	}
 
 	.parse-messages-title {
@@ -899,11 +918,6 @@ geosite:xai`;
 		font-size: 0.75rem;
 		overflow-x: auto;
 		margin-top: 0.25rem;
-	}
-	.actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.5rem;
 	}
 	.rules-editor {
 		display: grid;

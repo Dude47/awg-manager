@@ -24,11 +24,6 @@ function hostBase(s: string): string {
 	return s.trim().replace(/^\*\./, '').replace(/^\./, '');
 }
 
-/** `domain_suffix` with leading dot (sing-box: explicit dot-suffix form). */
-function suffixDotted(s: string): string {
-	return '.' + hostBase(s);
-}
-
 /** Bare IPv4/IPv6 → canonical CIDR for JSON (`/32` / `/128`). */
 export function normalizeIpCidrForJson(s: string): string {
 	if (isValidSimpleIp(s)) return `${s}/32`;
@@ -373,6 +368,7 @@ export function parseInlineRuleList(input: string): InlineRuleParseResult {
 				case 'domain_suffix':
 				case 'suffix':
 					if (!real(val)) { lg.err(`${rawKey} требует значение после двоеточия`); continue; }
+
 					if (val.startsWith('*.')) {
 						const norm = normalizeDomainHost(val.slice(2));
 						if (norm) {
@@ -380,10 +376,17 @@ export function parseInlineRuleList(input: string): InlineRuleParseResult {
 						} else {
 							lg.err(`Некорректный домен для ${rawKey}: ${val}`);
 						}
+					} else if (val.startsWith('.')) {
+						const norm = normalizeDomainHost(val.slice(1));
+						if (norm) {
+							domainSuffixGroup.add('.' + norm);
+						} else {
+							lg.err(`Некорректный домен для ${rawKey}: ${val}`);
+						}
 					} else {
 						const norm = normalizeDomainHost(val);
 						if (norm) {
-							domainSuffixGroup.add(suffixDotted(norm));
+							domainSuffixGroup.add(norm);
 						} else {
 							lg.err(`Некорректный домен для ${rawKey}: ${val}`);
 						}
