@@ -34,7 +34,6 @@
 		buildRouterClientContext,
 		collectBrowserSnapshot,
 		formatAboutReport,
-		formatLocalTimestampForFilename,
 		routerClientRows,
 		routerStaticRows,
 		type AwgmServicesSnapshot,
@@ -256,19 +255,6 @@
 		return formatAboutReport(sections);
 	}
 
-	function downloadReport() {
-		const text = buildAboutReportText();
-		const filename = `awg-about-${formatLocalTimestampForFilename(new Date())}.txt`;
-		const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = filename;
-		document.body.appendChild(a);
-		a.click();
-		a.remove();
-		URL.revokeObjectURL(url);
-	}
 </script>
 
 <div class="about-toolbar">
@@ -277,9 +263,6 @@
 	</Button>
 	<Button variant="ghost" size="sm" onclick={copyReport} disabled={refreshing || !sysInfo}>
 		Скопировать данные
-	</Button>
-	<Button variant="ghost" size="sm" onclick={downloadReport} disabled={refreshing || !sysInfo}>
-		Скачать отчёт
 	</Button>
 </div>
 
