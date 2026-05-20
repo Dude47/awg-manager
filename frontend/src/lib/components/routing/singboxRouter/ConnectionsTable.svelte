@@ -162,8 +162,8 @@
 	.t th {
 		font-size: 11px; font-weight: 600;
 		text-transform: uppercase; letter-spacing: 0.04em;
-		color: var(--text-secondary, #b8b6b3);
-		background: var(--surface-1, #1f2425);
+		color: var(--text-primary, #c0caf5);
+		background: var(--bg-secondary, #16161e);
 		/* z-index lifts the header above tbody rows so they don't bleed
 		   through during scroll (sticky elements get a stacking context
 		   but tbody rows have z-index:auto by default). */
