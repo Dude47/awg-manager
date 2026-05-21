@@ -54,6 +54,7 @@ import (
 	"github.com/hoaxisr/awg-manager/internal/singbox/subscription"
 	"github.com/hoaxisr/awg-manager/internal/staticroute"
 	"github.com/hoaxisr/awg-manager/internal/storage"
+	"github.com/hoaxisr/awg-manager/internal/sys/env"
 	"github.com/hoaxisr/awg-manager/internal/sys/kmod"
 	"github.com/hoaxisr/awg-manager/internal/sys/ndmsinfo"
 	"github.com/hoaxisr/awg-manager/internal/sys/osdetect"
@@ -250,7 +251,7 @@ func main() {
 	// (state.Manager, routing.Catalog, etc.) can depend on them. Commands
 	// + SaveCoordinator are constructed later (they depend on eventBus +
 	// orchestrator).
-	ndmsSem := ndmstransport.NewSemaphore(4)
+	ndmsSem := ndmstransport.NewSemaphore(env.IntDefault("AWG_NDMS_CAP", 30))
 	ndmsTransportClient := ndmstransport.New(ndmsSem)
 	ndmsTransportClient.SetAppLogger(loggingService)
 
