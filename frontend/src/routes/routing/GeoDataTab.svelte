@@ -5,7 +5,13 @@
 
 	let geoFiles = $state<GeoFileEntry[]>([]);
 
+	/** Только каталог из hrneo.conf (stat), без скачивания и без restart HR. */
 	async function loadGeoFiles() {
+		try {
+			await api.rescanGeoFiles();
+		} catch {
+			// HR не установлен / нет hrneo.conf — не ломаем вкладку
+		}
 		try {
 			geoFiles = (await api.getGeoFiles()) ?? [];
 		} catch {

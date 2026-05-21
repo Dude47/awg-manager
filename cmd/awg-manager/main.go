@@ -382,7 +382,7 @@ func main() {
 			log.Info("Adopted external geo files from hrneo.conf", map[string]interface{}{"count": n})
 		}
 		if err := hydraService.SyncGeoFilesToConfig(); err != nil {
-			log.Warn("Failed to sync geo paths to hrneo.conf after adopt/migrate", map[string]interface{}{"error": err.Error()})
+			log.Warn("Failed to sync geo paths to hrneo.conf after adopt", map[string]interface{}{"error": err.Error()})
 		}
 	}
 	// Warm up tag cache for entries with TagCount=0 in a background goroutine.

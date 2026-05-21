@@ -48,8 +48,9 @@ type GeoFileEntry struct {
 	Size     int64  `json:"size"`
 	TagCount int    `json:"tagCount"`
 	Updated  string `json:"updated"`
-	// External is true for files discovered in hrneo.conf but not registered
-	// through awg-manager. They have no URL and cannot be re-downloaded.
+	// External is true when the .dat file lives under /opt/etc/HydraRoute
+	// (downloaded via HR Neo). awg-manager tracks the path only until the
+	// user takes control or deletes the file.
 	External bool `json:"external,omitempty"`
 	// Mtime (RFC3339 UTC) is the file's modification time at the moment
 	// TagCount was computed. Used to detect stale cached TagCount without

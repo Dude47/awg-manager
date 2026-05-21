@@ -9,6 +9,8 @@
 		message: string;
 		/** Optional secondary text shown under message in muted style. */
 		secondary?: string;
+		/** Full filesystem path shown as a selectable monospace line. */
+		filePath?: string;
 		confirmLabel?: string;
 		cancelLabel?: string;
 		/** 'danger' uses the red destructive Button variant; 'primary' uses the accent. */
@@ -23,6 +25,7 @@
 		title,
 		message,
 		secondary,
+		filePath,
 		confirmLabel = 'Удалить',
 		cancelLabel = 'Отмена',
 		variant = 'danger',
@@ -34,6 +37,10 @@
 
 <Modal {open} {title} size="sm" onclose={onClose}>
 	<p class="confirm-message">{message}</p>
+	{#if filePath}
+		<p class="confirm-file-label">Файл на диске</p>
+		<code class="confirm-file-path">{filePath}</code>
+	{/if}
 	{#if secondary}
 		<p class="confirm-secondary">{secondary}</p>
 	{/if}
@@ -56,6 +63,25 @@
 	.confirm-message {
 		margin: 0 0 0.5rem;
 		line-height: 1.4;
+	}
+	.confirm-file-label {
+		margin: 0.5rem 0 0.25rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--muted-text, var(--color-text-muted));
+	}
+	.confirm-file-path {
+		display: block;
+		margin: 0 0 0.5rem;
+		padding: 8px 10px;
+		font-size: 0.8125rem;
+		line-height: 1.35;
+		word-break: break-all;
+		user-select: all;
+		background: var(--bg-secondary, var(--color-bg-secondary));
+		border: 1px solid var(--border, var(--color-border));
+		border-radius: 6px;
+		color: var(--text-primary, var(--color-text-primary));
 	}
 	.confirm-secondary {
 		margin: 0;

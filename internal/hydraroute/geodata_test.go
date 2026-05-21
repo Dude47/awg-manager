@@ -3,6 +3,7 @@ package hydraroute
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -42,8 +43,8 @@ func TestAdoptExternalFiles_AddsUnknownFiles(t *testing.T) {
 		t.Fatalf("entries = %d, want 2", len(entries))
 	}
 	for _, e := range entries {
-		if !e.External {
-			t.Errorf("entry %q: External=false, want true", e.Path)
+		if e.External {
+			t.Errorf("entry %q: External=true for awg-manager/geo path", e.Path)
 		}
 		want := ""
 		switch e.Type {
@@ -116,6 +117,39 @@ func TestAdoptExternalFiles_NilConfig(t *testing.T) {
 	}
 }
 
+func TestAdoptExternalFiles_ResolvesRelativeHRPaths(t *testing.T) {
+	tmp := t.TempDir()
+	origHR := hrDir
+	hrDir = filepath.Join(tmp, "HydraRoute")
+	geoSub := filepath.Join(hrDir, "geo")
+	if err := os.MkdirAll(geoSub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { hrDir = origHR }()
+
+	relPath := "geo/geosite_GA.dat"
+	absPath := filepath.Join(hrDir, relPath)
+	if err := os.WriteFile(absPath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := newTestGeoStore(t)
+	cfg := &Config{GeoSiteFiles: []string{relPath}}
+	n, err := store.AdoptExternalFiles(cfg)
+	if err != nil {
+		t.Fatalf("AdoptExternalFiles: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("adopted = %d, want 1", n)
+	}
+	if store.entries[0].Path != absPath {
+		t.Fatalf("path = %q, want %q", store.entries[0].Path, absPath)
+	}
+	if !store.entries[0].External {
+		t.Fatal("expected External=true")
+	}
+}
+
 func TestAdoptExternalFiles_SkipsUnmanagedPaths(t *testing.T) {
 	tmp := t.TempDir()
 	store := NewGeoDataStore(tmp)
@@ -146,7 +180,7 @@ func TestAdoptExternalFiles_SkipsUnmanagedPaths(t *testing.T) {
 	}
 }
 
-func TestUpdate_RejectsExternalEntryWithoutURL(t *testing.T) {
+func TestUpdate_UsesDefaultURLForKnownExternalType(t *testing.T) {
 	store := newTestGeoStore(t)
 	path := filepath.Join(store.geoDir, "adopted.dat")
 	if err := os.WriteFile(path, []byte("x"), 0644); err != nil {
@@ -158,13 +192,14 @@ func TestUpdate_RejectsExternalEntryWithoutURL(t *testing.T) {
 	}
 	store.mu.Unlock()
 
+	// downloadFile will fail (no network / invalid dat) — we only assert the
+	// error is from download, not "no source URL".
 	_, err := store.Update(path)
 	if err == nil {
-		t.Fatal("Update returned nil, expected error for external entry")
+		t.Fatal("Update returned nil, expected download error")
 	}
-	want := "cannot update external file: no source URL on record"
-	if err.Error() != want {
-		t.Fatalf("err = %q, want %q", err, want)
+	if strings.Contains(err.Error(), "no source URL") {
+		t.Fatalf("unexpected no-source-url error: %v", err)
 	}
 }
 

@@ -43,6 +43,7 @@ type GeoFileEntryDTO struct {
 	Size     int64  `json:"size" example:"3145728"`
 	TagCount int    `json:"tagCount" example:"420"`
 	Updated  string `json:"updated" example:"2024-01-15T02:00:00Z"`
+	External bool   `json:"external,omitempty" example:"true"`
 }
 
 // GeoFilesResponse is the envelope for GET /hydraroute/geo-files.
@@ -81,7 +82,9 @@ type GeoFileResponse struct {
 // POST /hydraroute/geo-files/update. The shape is the same whether the
 // caller targeted one path or all paths.
 type GeoFileUpdatedData struct {
-	Updated int `json:"updated" example:"1"`
+	Updated int    `json:"updated" example:"1"`
+	Partial bool   `json:"partial,omitempty" example:"true"`
+	Error   string `json:"error,omitempty"`
 }
 
 // GeoFileUpdatedResponse is the envelope for POST /hydraroute/geo-files/update.
@@ -147,6 +150,22 @@ type AddGeoFileRequest struct {
 // Empty path triggers a bulk refresh of every tracked geo file.
 type UpdateGeoFileRequest struct {
 	Path string `json:"path" example:"/opt/etc/hrneo/geosite.db"`
+}
+
+// TakeGeoFileControlRequest is the body for POST /hydraroute/geo-files/take-control.
+type TakeGeoFileControlRequest struct {
+	Path string `json:"path" example:"/opt/etc/HydraRoute/geosite_GA.dat"`
+}
+
+// GeoFilesRescannedData reports how many new paths were adopted from hrneo.conf.
+type GeoFilesRescannedData struct {
+	Adopted int `json:"adopted" example:"1"`
+}
+
+// GeoFilesRescannedResponse is the envelope for POST /hydraroute/geo-files/rescan.
+type GeoFilesRescannedResponse struct {
+	Success bool                  `json:"success" example:"true"`
+	Data    GeoFilesRescannedData   `json:"data"`
 }
 
 // SetPolicyOrderRequest is the body for POST /hydraroute/policy-order.
@@ -345,6 +364,78 @@ func (h *HydraRouteHandler) DeleteGeoFile(w http.ResponseWriter, r *http.Request
 	response.Success(w, map[string]bool{"ok": true})
 }
 
+// TakeGeoFileControl moves an external HydraRoute file into awg-manager/geo.
+//
+//	@Summary		Take HydraRoute geo file under awg-manager control
+//	@Tags			hydraroute
+//	@Accept			json
+//	@Produce		json
+//	@Security		CookieAuth
+//	@Param			body	body		TakeGeoFileControlRequest	true	"Filesystem path of the external geo file"
+//	@Success		200		{object}	GeoFileResponse
+//	@Failure		400		{object}	APIErrorEnvelope
+//	@Failure		500		{object}	APIErrorEnvelope
+//	@Router			/hydraroute/geo-files/take-control [post]
+func (h *HydraRouteHandler) TakeGeoFileControl(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.MethodNotAllowed(w)
+		return
+	}
+
+	var req TakeGeoFileControlRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, "invalid request body: "+err.Error(), "BAD_REQUEST")
+		return
+	}
+	if req.Path == "" {
+		response.Error(w, "path is required", "BAD_REQUEST")
+		return
+	}
+
+	gds := h.svc.GetGeoData()
+	if gds == nil {
+		response.Error(w, "geo data store not initialized", "NOT_INITIALIZED")
+		return
+	}
+
+	entry, err := gds.TakeControl(req.Path)
+	if err != nil {
+		response.Error(w, err.Error(), "GEO_TAKE_CONTROL_ERROR")
+		return
+	}
+
+	if err := h.svc.SyncGeoFilesToConfig(); err != nil {
+		response.Error(w, "moved but failed to sync config: "+err.Error(), "SYNC_ERROR")
+		return
+	}
+
+	response.Success(w, entry)
+}
+
+// RescanGeoFiles adopts geo paths from hrneo.conf not yet in the catalog.
+//
+//	@Summary		Rescan HydraRoute geo files from hrneo.conf
+//	@Tags			hydraroute
+//	@Produce		json
+//	@Security		CookieAuth
+//	@Success		200	{object}	GeoFilesRescannedResponse
+//	@Failure		500	{object}	APIErrorEnvelope
+//	@Router			/hydraroute/geo-files/rescan [post]
+func (h *HydraRouteHandler) RescanGeoFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		response.MethodNotAllowed(w)
+		return
+	}
+
+	n, err := h.svc.RescanGeoFiles()
+	if err != nil {
+		response.Error(w, err.Error(), "GEO_RESCAN_ERROR")
+		return
+	}
+
+	response.Success(w, GeoFilesRescannedData{Adopted: n})
+}
+
 // UpdateGeoFile re-downloads a geo data file (or all files if path is empty).
 //
 //	@Summary		Refresh HydraRoute geo file(s)
@@ -376,28 +467,41 @@ func (h *HydraRouteHandler) UpdateGeoFile(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	updated := 0
+	out := GeoFileUpdatedData{}
 	if req.Path == "" {
 		count, err := gds.UpdateAll()
+		out.Updated = count
 		if err != nil {
-			response.Error(w, err.Error(), "GEO_UPDATE_ERROR")
-			return
+			out.Partial = count > 0
+			out.Error = err.Error()
+			if count == 0 {
+				response.Error(w, err.Error(), "GEO_UPDATE_ERROR")
+				return
+			}
 		}
-		updated = count
 	} else {
 		if _, err := gds.Update(req.Path); err != nil {
 			response.Error(w, err.Error(), "GEO_UPDATE_ERROR")
 			return
 		}
-		updated = 1
+		out.Updated = 1
 	}
 
 	if err := h.svc.SyncGeoFilesToConfig(); err != nil {
+		if out.Updated > 0 {
+			out.Partial = true
+			if out.Error != "" {
+				out.Error += "; "
+			}
+			out.Error += "sync config: " + err.Error()
+			response.Success(w, out)
+			return
+		}
 		response.Error(w, "updated but failed to sync config: "+err.Error(), "SYNC_ERROR")
 		return
 	}
 
-	response.Success(w, map[string]int{"updated": updated})
+	response.Success(w, out)
 }
 
 // GetGeoTags returns the tag list for a specific geo data file.

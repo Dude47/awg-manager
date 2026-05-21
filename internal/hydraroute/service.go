@@ -289,6 +289,23 @@ func (s *Service) SyncGeoFilesToConfig() error {
 	return nil
 }
 
+// RescanGeoFiles adopts geo paths from hrneo.conf that are not yet tracked.
+func (s *Service) RescanGeoFiles() (int, error) {
+	cfg, err := ReadConfig()
+	if err != nil {
+		return 0, err
+	}
+	s.mu.Lock()
+	gds := s.geodata
+	s.mu.Unlock()
+	if gds == nil {
+		return 0, fmt.Errorf("geo data store not initialized")
+	}
+	// Catalog-only: paths already live in hrneo.conf — no config rewrite or
+	// neo restart (keeps tab-open rescan cheap).
+	return gds.AdoptExternalFiles(cfg)
+}
+
 // CalculateIpsetUsage returns the current ipset usage per kernel interface.
 func (s *Service) CalculateIpsetUsage() (*IpsetUsage, error) {
 	cfg, err := ReadConfig()

@@ -465,11 +465,22 @@ class ApiClient {
 		await this.request(`/hydraroute/geo-files/delete?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 	}
 
-	async updateGeoFile(path?: string): Promise<unknown> {
+	async updateGeoFile(path?: string): Promise<{ updated: number; partial?: boolean; error?: string }> {
 		return this.request('/hydraroute/geo-files/update', {
 			method: 'POST',
 			body: JSON.stringify({ path: path || '' }),
 		});
+	}
+
+	async takeGeoFileControl(path: string): Promise<GeoFileEntry> {
+		return this.request('/hydraroute/geo-files/take-control', {
+			method: 'POST',
+			body: JSON.stringify({ path }),
+		});
+	}
+
+	async rescanGeoFiles(): Promise<{ adopted: number }> {
+		return this.request('/hydraroute/geo-files/rescan', { method: 'POST' });
 	}
 
 	async getGeoTags(path: string): Promise<GeoTag[]> {

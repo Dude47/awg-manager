@@ -672,6 +672,8 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("/api/hydraroute/geo-files/add", guarded(hrHandler.AddGeoFile))
 		mux.HandleFunc("/api/hydraroute/geo-files/delete", guarded(hrHandler.DeleteGeoFile))
 		mux.HandleFunc("/api/hydraroute/geo-files/update", guarded(hrHandler.UpdateGeoFile))
+		mux.HandleFunc("/api/hydraroute/geo-files/take-control", guarded(hrHandler.TakeGeoFileControl))
+		mux.HandleFunc("/api/hydraroute/geo-files/rescan", guarded(hrHandler.RescanGeoFiles))
 		mux.HandleFunc("/api/hydraroute/geo-tags", guarded(hrHandler.GetGeoTags))
 		mux.HandleFunc("/api/hydraroute/geo-expand", guarded(hrHandler.ExpandGeoTag))
 		mux.HandleFunc("/api/hydraroute/ipset-usage", guarded(hrHandler.GetIpsetUsage))

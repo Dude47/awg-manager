@@ -93,9 +93,67 @@
 	}
 
 	let pendingDelete = $state<GeoFileEntry | null>(null);
+	let pendingTakeControl = $state<GeoFileEntry | null>(null);
 
 	function requestRemove(f: GeoFileEntry) {
 		pendingDelete = f;
+	}
+
+	async function syncFromHR() {
+		busy = 'sync';
+		err = '';
+		const notes: string[] = [];
+		try {
+			try {
+				await api.rescanGeoFiles();
+			} catch (e: unknown) {
+				// Нет HR / hrneo.conf — всё равно обновляем уже известные файлы.
+				notes.push(e instanceof Error ? e.message : String(e));
+			}
+			// Список после rescan — HR External видны даже если update упадёт.
+			await onrefresh();
+
+			try {
+				const upd = await api.updateGeoFile();
+				await onrefresh();
+				if (upd.partial && upd.error) {
+					notes.push(
+						upd.updated > 0
+							? `Обновлено ${upd.updated}, ошибки: ${upd.error}`
+							: upd.error,
+					);
+				}
+			} catch (e: unknown) {
+				await onrefresh();
+				notes.push(e instanceof Error ? e.message : String(e));
+			}
+
+			if (notes.length > 0) {
+				err = notes.join('; ');
+			}
+		} finally {
+			busy = null;
+		}
+	}
+
+	async function confirmTakeControl() {
+		if (!pendingTakeControl) return;
+		const f = pendingTakeControl;
+		busy = f.path;
+		err = '';
+		try {
+			await api.takeGeoFileControl(f.path);
+			pendingTakeControl = null;
+			onrefresh();
+		} catch (e: unknown) {
+			err = e instanceof Error ? e.message : String(e);
+		} finally {
+			busy = null;
+		}
+	}
+
+	function canUpdate(f: GeoFileEntry): boolean {
+		return !!(f.url || f.type === 'geoip' || f.type === 'geosite');
 	}
 
 	async function confirmRemove() {
@@ -129,6 +187,16 @@
 	<header class="pane-header">
 		<h2>Гео-данные</h2>
 		<span class="pane-meta">{files.length} файла</span>
+		<Button
+			variant="ghost"
+			size="sm"
+			disabled={busy !== null}
+			loading={busy === 'sync'}
+			onclick={syncFromHR}
+			title="Подтянуть пути из hrneo.conf (External) и перекачать все .dat по сохранённым URL"
+		>
+			Синхронизировать
+		</Button>
 	</header>
 
 	{#if err}<div class="error-banner">{err}</div>{/if}
@@ -142,9 +210,12 @@
 				<div class="file-row">
 					<div class="file-info">
 						<span class="file-type type-{f.type}">{f.type}</span>
-						<span class="file-name">{fileName(f.path)}</span>
+						<span class="file-name" title={f.path}>{fileName(f.path)}</span>
 						{#if f.external}
-							<span class="file-external" title="Найден в hrneo.conf вне awg-manager. Можно удалить, но не обновить — источник неизвестен.">external</span>
+							<span
+								class="file-external"
+								title="Данный файл управляется HydraRoute Neo"
+							>External</span>
 						{/if}
 						<span class="file-meta">{humanSize(f.size)} · {f.tagCount} тегов</span>
 						{#if busy === f.path && fp}
@@ -158,11 +229,21 @@
 						{/if}
 					</div>
 					<div class="file-actions">
-						{#if f.url}
+						{#if f.external}
+							<Button
+								variant="secondary"
+								size="sm"
+								disabled={busy === f.path}
+								onclick={() => (pendingTakeControl = f)}
+							>
+								Взять под контроль
+							</Button>
+						{/if}
+						{#if canUpdate(f)}
 							<Button
 								variant="ghost"
 								size="sm"
-								disabled={busy === f.path}
+								disabled={busy === f.path || busy === 'sync'}
 								loading={busy === f.path}
 								onclick={() => update(f.path)}
 							>
@@ -266,13 +347,32 @@
 	</div>
 </div>
 
+{#if pendingTakeControl}
+	{@const pt = pendingTakeControl}
+	<ConfirmModal
+		open={true}
+		title="Взять под контроль"
+		message={`Перенести «${fileName(pt.path)}» в каталог awg-manager?`}
+		secondary="Файл будет перенесён из директории HydraRoute (/opt/etc/HydraRoute) и дальше управляться из AWGM. Путь в hrneo.conf обновится при синхронизации."
+		confirmLabel="Перенести"
+		variant="primary"
+		busy={busy === pt.path}
+		onConfirm={confirmTakeControl}
+		onClose={() => (pendingTakeControl = null)}
+	/>
+{/if}
+
 {#if pendingDelete}
 	{@const pd = pendingDelete}
+	{@const hrKey = pd.type === 'geosite' ? 'GeoSiteFile' : 'GeoIPFile'}
 	<ConfirmModal
 		open={true}
 		title="Удалить гео-файл"
-		message={`Удалить «${fileName(pd.path)}»?`}
-		secondary={`Файл удалится из каталога awg-manager/geo. Если установлен HydraRoute — путь также уберётся из ${pd.type === 'geosite' ? 'GeoSiteFile=' : 'GeoIPFile='} в hrneo.conf.`}
+		message={pd.external
+			? `Удалить «${fileName(pd.path)}» с диска? Файл управляется HydraRoute Neo — будет удалён из /opt/etc/HydraRoute, не только из каталога AWGM.`
+			: `Удалить «${fileName(pd.path)}»?`}
+		filePath={pd.path}
+		secondary={`Из hrneo.conf уберётся строка ${hrKey}=${pd.path} (если установлен HydraRoute).`}
 		busy={busy === pd.path}
 		onConfirm={confirmRemove}
 		onClose={() => (pendingDelete = null)}
@@ -290,8 +390,12 @@
 		display: flex;
 		align-items: baseline;
 		gap: 10px;
+		flex-wrap: wrap;
 		padding-bottom: 10px;
 		border-bottom: 1px solid var(--border);
+	}
+	.pane-header :global(button) {
+		margin-left: auto;
 	}
 	.pane-header h2 {
 		margin: 0;
@@ -368,6 +472,7 @@
 		font-family: ui-monospace, monospace;
 		color: var(--text-primary);
 		font-size: 0.875rem;
+		cursor: help;
 	}
 
 	.file-meta {

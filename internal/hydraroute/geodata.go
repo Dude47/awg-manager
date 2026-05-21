@@ -97,8 +97,6 @@ func NewGeoDataStore(dataDir string) *GeoDataStore {
 	_ = os.MkdirAll(geoDir, storage.DirPermission)
 	// Best-effort load; errors are silently ignored (empty store is valid).
 	_ = s.load()
-	// Move legacy files from /opt/etc/HydraRoute into awg-manager/geo.
-	_ = s.migrateLegacyPaths()
 	return s
 }
 
@@ -227,11 +225,57 @@ func (s *GeoDataStore) Download(fileType, rawURL string) (*GeoFileEntry, error) 
 	return &entry, nil
 }
 
+// TakeControl moves an external HydraRoute file into awg-manager/geo and
+// clears the External flag so awg-manager owns the on-disk copy.
+func (s *GeoDataStore) TakeControl(path string) (*GeoFileEntry, error) {
+	path = filepath.Clean(path)
+	if !s.isManagedPath(path) {
+		return nil, fmt.Errorf("path outside managed geo directories")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	idx := s.findUnlocked(path)
+	if idx < 0 {
+		return nil, fmt.Errorf("geo file not found: %s", path)
+	}
+	entry := s.entries[idx]
+	if !entry.External {
+		return nil, fmt.Errorf("file is already managed by awg-manager")
+	}
+	if !s.isHRPath(path) {
+		return nil, fmt.Errorf("take control only applies to files in HydraRoute directory")
+	}
+
+	dest, err := s.relocateIntoGeoDirLocked(path)
+	if err != nil {
+		return nil, err
+	}
+	if tags, ok := s.tagCache[path]; ok {
+		s.tagCache[dest] = tags
+		delete(s.tagCache, path)
+	}
+
+	entry.Path = dest
+	entry.External = false
+	if entry.URL == "" {
+		entry.URL = defaultURLForType(entry.Type)
+	}
+	s.entries[idx] = entry
+
+	if err := s.saveUnlocked(); err != nil {
+		return nil, fmt.Errorf("save metadata: %w", err)
+	}
+	updated := entry
+	return &updated, nil
+}
+
 // Delete removes the tracked entry and its file from disk.
 func (s *GeoDataStore) Delete(path string) error {
 	path = filepath.Clean(path)
 	if !s.isManagedPath(path) {
-		return fmt.Errorf("path outside managed geo directory")
+		return fmt.Errorf("path outside managed geo directories")
 	}
 
 	s.mu.Lock()
@@ -256,7 +300,7 @@ func (s *GeoDataStore) Delete(path string) error {
 func (s *GeoDataStore) Update(path string) (*GeoFileEntry, error) {
 	path = filepath.Clean(path)
 	if !s.isManagedPath(path) {
-		return nil, fmt.Errorf("path outside managed geo directory")
+		return nil, fmt.Errorf("path outside managed geo directories")
 	}
 
 	s.mu.Lock()
@@ -268,24 +312,28 @@ func (s *GeoDataStore) Update(path string) (*GeoFileEntry, error) {
 	}
 
 	entry := s.entries[idx]
-	if entry.URL == "" {
-		return nil, fmt.Errorf("cannot update external file: no source URL on record")
+	sourceURL := entry.URL
+	if sourceURL == "" {
+		sourceURL = defaultURLForType(entry.Type)
+	}
+	if sourceURL == "" {
+		return nil, fmt.Errorf("no source URL for %s file", entry.Type)
 	}
 
 	progress := s.progress
 	bytesProgress := func(downloaded, total int64) {
 		if progress != nil {
-			progress(entry.URL, entry.Type, "download", downloaded, total, "")
+			progress(sourceURL, entry.Type, "download", downloaded, total, "")
 		}
 	}
-	if _, err := downloadFile(entry.URL, path, bytesProgress); err != nil {
+	if _, err := downloadFile(sourceURL, path, bytesProgress); err != nil {
 		if progress != nil {
-			progress(entry.URL, entry.Type, "error", 0, 0, err.Error())
+			progress(sourceURL, entry.Type, "error", 0, 0, err.Error())
 		}
-		return nil, fmt.Errorf("re-download %s: %w", entry.URL, err)
+		return nil, fmt.Errorf("re-download %s: %w", sourceURL, err)
 	}
 	if progress != nil {
-		progress(entry.URL, entry.Type, "done", 0, 0, "")
+		progress(sourceURL, entry.Type, "done", 0, 0, "")
 	}
 
 	size, tagCount, err := ReadFileInfo(path, entry.Type)
@@ -336,7 +384,7 @@ func (s *GeoDataStore) UpdateAll() (int, error) {
 func (s *GeoDataStore) GetTags(path string) ([]GeoTag, error) {
 	path = filepath.Clean(path)
 	if !s.isManagedPath(path) {
-		return nil, fmt.Errorf("path outside managed geo directory")
+		return nil, fmt.Errorf("path outside managed geo directories")
 	}
 
 	s.mu.RLock()
@@ -422,13 +470,12 @@ func (s *GeoDataStore) GeoFilePaths() (geoIP, geoSite []string) {
 // paths not yet tracked by this store, and registers them as External entries.
 // Returns the number of files adopted.
 //
-// Adopted entries have URL="" and External=true — the user can delete them
-// (which removes the .dat from disk) but cannot "update" them because there
-// is no source URL on record.
+// HR paths are marked External=true with a default Ground-Zerro URL when the
+// type is known, so "Обновить" can re-download in place. "Взять под контроль"
+// moves the file into awg-manager/geo and clears External.
 //
-// Paths listed in hrneo.conf are adopted into geoDir when possible. Legacy
-// paths under /opt/etc/HydraRoute are relocated into awg-manager/geo.
-// Paths outside geoDir and hrDir are skipped.
+// Paths under awg-manager/geo or /opt/etc/HydraRoute are adopted in place
+// (HR-downloaded files stay in HydraRoute). Paths outside those dirs are skipped.
 //
 // Missing files (listed in config but not present on disk) are skipped.
 // Tag counts are read on a best-effort basis; failures leave TagCount=0.
@@ -457,23 +504,17 @@ func (s *GeoDataStore) AdoptExternalFiles(cfg *Config) (int, error) {
 	}
 
 	for _, item := range paths {
-		clean := filepath.Clean(item.path)
+		clean := resolveGeoConfigPath(item.path)
+		if clean == "" {
+			continue
+		}
 		if _, ok := known[clean]; ok {
 			continue
 		}
-		managed := clean
-		switch {
-		case hasPathPrefix(clean, s.geoDir):
-			// already under awg-manager/geo
-		case hasPathPrefix(clean, hrDir):
-			dest, err := s.relocateIntoGeoDir(clean)
-			if err != nil {
-				continue
-			}
-			managed = dest
-		default:
+		if !hasPathPrefix(clean, s.geoDir) && !hasPathPrefix(clean, hrDir) {
 			continue
 		}
+		managed := clean
 		if _, ok := known[managed]; ok {
 			continue
 		}
@@ -493,7 +534,7 @@ func (s *GeoDataStore) AdoptExternalFiles(cfg *Config) (int, error) {
 			Size:     info.Size(),
 			TagCount: 0,
 			Updated:  mtime,
-			External: true,
+			External: s.isHRPath(managed),
 			Mtime:    mtime,
 		})
 		known[managed] = struct{}{}
