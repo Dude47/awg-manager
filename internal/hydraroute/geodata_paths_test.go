@@ -74,7 +74,7 @@ func TestAdoptExternalFiles_KeepsHRPath(t *testing.T) {
 	if _, err := os.Stat(hrPath); err != nil {
 		t.Fatalf("file should remain in HR dir: %v", err)
 	}
-	if !entries[0].External {
+	if !store.entries[0].External {
 		t.Fatal("expected External=true for HR path")
 	}
 }
