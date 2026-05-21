@@ -244,11 +244,13 @@ func (a *routerLoggerAdapter) Info(msg string) {
 }
 
 type ServiceImpl struct {
-	deps              Deps
-	mu                sync.Mutex
-	currentMark       string              // last-installed iptables mark; used by Reconcile to detect change
-	currentWANIPs     []string            // last-collected WAN IPs; used by Reconcile to detect change
-	currentLANBridges []LANBridgeDNSRedir // last-discovered LAN-bridge (name, ndnproxy port) pairs; reconcile triggers re-install when this changes (e.g. NDMS hotspot reconfigured, bridge added/removed, port reassigned)
+	deps                    Deps
+	mu                      sync.Mutex
+	currentMark             string              // last-installed iptables mark; used by Reconcile to detect change
+	currentWANIPs           []string            // last-collected WAN IPs; used by Reconcile to detect change
+	currentLANBridges       []LANBridgeDNSRedir // last-discovered LAN-bridge (name, ndnproxy port) pairs; reconcile triggers re-install when this changes (e.g. NDMS hotspot reconfigured, bridge added/removed, port reassigned)
+	currentBypassPresets    []string
+	currentBypassExtraPorts string
 
 	// netfilterStateKnown tracks whether we know for certain that the
 	// installed iptables rules match the current desired state. It starts
@@ -622,10 +624,13 @@ func (s *ServiceImpl) Enable(ctx context.Context) error {
 		s.deps.Log.Warnf("router: no NDMS hotspot LAN bridges discovered; DNS fallback for no-policy devices skipped")
 	}
 
+	bypassUDP, bypassTCP, _ := resolveBypassPorts(sr.BypassPresets, sr.BypassExtraPorts)
 	if err := s.deps.IPTables.Install(ctx, RestoreInputSpec{
-		PolicyMark: mark,
-		WANIPs:     wanIPs,
-		LANBridges: lanBridges,
+		PolicyMark:     mark,
+		WANIPs:         wanIPs,
+		LANBridges:     lanBridges,
+		BypassUDPPorts: bypassUDP,
+		BypassTCPPorts: bypassTCP,
 	}); err != nil {
 		// Stop sing-box from listening on the now-orphan TPROXY port,
 		// but DO NOT corrupt the persisted user config. With orchestrator
@@ -644,6 +649,8 @@ func (s *ServiceImpl) Enable(ctx context.Context) error {
 	s.currentMark = mark
 	s.currentWANIPs = wanIPs
 	s.currentLANBridges = lanBridges
+	s.currentBypassPresets = sr.BypassPresets
+	s.currentBypassExtraPorts = sr.BypassExtraPorts
 	s.netfilterStateKnown = true
 
 	settings.SingboxRouter = sr
@@ -927,6 +934,8 @@ func (s *ServiceImpl) reconcileInstalled(ctx context.Context, sr storage.Singbox
 	wanIPsChanged := !slices.Equal(s.currentWANIPs, wanIPs)
 	lanBridges, _ := DiscoverLANBridges(ctx, mark)
 	lanBridgesChanged := !equalLANBridges(s.currentLANBridges, lanBridges)
+	bypassPresetsChanged := !slices.Equal(s.currentBypassPresets, sr.BypassPresets)
+	bypassExtraChanged := s.currentBypassExtraPorts != sr.BypassExtraPorts
 
 	// After a daemon restart or upgrade the old awg-manager process died
 	// with no chance to run Uninstall, so stale AWGM chains, ip rules
@@ -935,7 +944,7 @@ func (s *ServiceImpl) reconcileInstalled(ctx context.Context, sr storage.Singbox
 	// reconcileInstalled after startup always forces a full re-install
 	// regardless of what IsInstalled reports.
 	forceInitialSync := !s.netfilterStateKnown
-	needsInstall := forceInitialSync || markChanged || wanIPsChanged || lanBridgesChanged
+	needsInstall := forceInitialSync || markChanged || wanIPsChanged || lanBridgesChanged || bypassPresetsChanged || bypassExtraChanged
 
 	if needsInstall {
 		if forceInitialSync && s.deps.Log != nil {
@@ -946,11 +955,14 @@ func (s *ServiceImpl) reconcileInstalled(ctx context.Context, sr storage.Singbox
 			return err
 		}
 
+		bypassUDP, bypassTCP, _ := resolveBypassPorts(sr.BypassPresets, sr.BypassExtraPorts)
 		s.mu.Lock()
 		if err := s.deps.IPTables.Install(ctx, RestoreInputSpec{
-			PolicyMark: mark,
-			WANIPs:     wanIPs,
-			LANBridges: lanBridges,
+			PolicyMark:     mark,
+			WANIPs:         wanIPs,
+			LANBridges:     lanBridges,
+			BypassUDPPorts: bypassUDP,
+			BypassTCPPorts: bypassTCP,
 		}); err != nil {
 			s.mu.Unlock()
 			return err
@@ -958,6 +970,8 @@ func (s *ServiceImpl) reconcileInstalled(ctx context.Context, sr storage.Singbox
 		s.currentMark = mark
 		s.currentWANIPs = wanIPs
 		s.currentLANBridges = lanBridges
+		s.currentBypassPresets = sr.BypassPresets
+		s.currentBypassExtraPorts = sr.BypassExtraPorts
 		s.netfilterStateKnown = true
 		s.mu.Unlock()
 	}
@@ -1193,6 +1207,14 @@ func ValidateSingboxRouterSettings(sr storage.SingboxRouterSettings) error {
 	}
 	if !sr.WANAutoDetect && sr.WANInterface == "" {
 		return fmt.Errorf("wanAutoDetect=false requires wanInterface to be set to a kernel interface name")
+	}
+	for _, name := range sr.BypassPresets {
+		if _, ok := knownPresets[name]; !ok {
+			return fmt.Errorf("unknown bypass preset %q", name)
+		}
+	}
+	if _, _, err := parseExtraPorts(sr.BypassExtraPorts); err != nil {
+		return fmt.Errorf("bypassExtraPorts: %w", err)
 	}
 	return nil
 }

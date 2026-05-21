@@ -671,6 +671,55 @@ func TestAddRuleSet_InlineWritesLocalBinaryToPendingAndListsInline(t *testing.T)
 	}
 }
 
+// ---------------------------------------------------------------------------
+// ValidateSingboxRouterSettings — bypass presets and extra ports
+// ---------------------------------------------------------------------------
+
+func TestValidateSingboxRouterSettings_ValidPresets(t *testing.T) {
+	sr := storage.SingboxRouterSettings{
+		WANAutoDetect: true,
+		BypassPresets: []string{"l2tp", "ntp"},
+	}
+	if err := ValidateSingboxRouterSettings(sr); err != nil {
+		t.Fatalf("unexpected error for valid presets: %v", err)
+	}
+}
+
+func TestValidateSingboxRouterSettings_UnknownPreset(t *testing.T) {
+	sr := storage.SingboxRouterSettings{
+		WANAutoDetect: true,
+		BypassPresets: []string{"l2tp", "nonexistent"},
+	}
+	err := ValidateSingboxRouterSettings(sr)
+	if err == nil {
+		t.Fatal("expected error for unknown preset")
+	}
+	if !strings.Contains(err.Error(), "nonexistent") {
+		t.Errorf("error should mention preset name, got: %v", err)
+	}
+}
+
+func TestValidateSingboxRouterSettings_InvalidExtraPorts(t *testing.T) {
+	sr := storage.SingboxRouterSettings{
+		WANAutoDetect:    true,
+		BypassExtraPorts: "51820", // missing protocol
+	}
+	err := ValidateSingboxRouterSettings(sr)
+	if err == nil {
+		t.Fatal("expected error for malformed ExtraPorts")
+	}
+}
+
+func TestValidateSingboxRouterSettings_ValidExtraPorts(t *testing.T) {
+	sr := storage.SingboxRouterSettings{
+		WANAutoDetect:    true,
+		BypassExtraPorts: "51820 UDP, 1194 TCP",
+	}
+	if err := ValidateSingboxRouterSettings(sr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestUpdateRuleSet_InlineUsesNewContentAddressedFileWithoutChangingOld(t *testing.T) {
 	svc, dir := newOrchedTestService(t)
 	svc.deps.Singbox.(*fakeSingbox).binary = "/opt/bin/sing-box"
