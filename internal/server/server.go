@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -53,14 +55,13 @@ const (
 	DefaultPort       = 2222
 	FallbackPortStart = 8080
 	FallbackPortEnd   = 8090
-	DefaultWebRoot    = "/opt/share/www/awg-manager"
 )
 
 // Config holds server configuration.
 type Config struct {
 	ListenAddr         string
 	LoopbackListenAddr string // optional: 127.0.0.1:port for reverse proxy support
-	WebRoot            string // Path to static files (SPA)
+	FrontendFS         fs.FS
 	Version            string
 
 	// PprofStandaloneAddr, if non-empty, starts an additional listener that
@@ -1134,46 +1135,38 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("/api/singbox/subscriptions/members/remove", guarded(sh.RemoveMember))
 	}
 
-	// Static files (SPA) - must be last
-	if s.config.WebRoot != "" {
-		mux.Handle("/", s.spaHandler())
+	// Static files (SPA) - must be last.
+	if s.config.FrontendFS != nil {
+		mux.Handle("/", spaHandler(s.config.FrontendFS))
 	}
 }
 
-// spaHandler serves static files with SPA fallback to index.html
-func (s *Server) spaHandler() http.Handler {
+// spaHandler serves static files with SPA fallback to index.html.
+func spaHandler(staticFS fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Clean and join path
-		path := filepath.Join(s.config.WebRoot, filepath.Clean(r.URL.Path))
-
-		// Check if file exists
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			// File doesn't exist or is directory - serve index.html (SPA fallback)
-			path = filepath.Join(s.config.WebRoot, "index.html")
+		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if name == "" {
+			name = "index.html"
 		}
 
-		// Set content type based on extension
-		ext := filepath.Ext(path)
-		switch ext {
-		case ".html":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		case ".css":
-			w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		case ".js":
-			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-		case ".json":
-			w.Header().Set("Content-Type", "application/json")
-		case ".svg":
-			w.Header().Set("Content-Type", "image/svg+xml")
-		case ".png":
-			w.Header().Set("Content-Type", "image/png")
-		case ".ico":
-			w.Header().Set("Content-Type", "image/x-icon")
-		case ".woff":
-			w.Header().Set("Content-Type", "font/woff")
-		case ".woff2":
-			w.Header().Set("Content-Type", "font/woff2")
+		info, err := fs.Stat(staticFS, name)
+		if err != nil || info.IsDir() {
+			name = "index.html"
+		}
+
+		contentType := mime.TypeByExtension(path.Ext(name))
+		switch {
+		case strings.HasSuffix(name, ".html"):
+			contentType = "text/html; charset=utf-8"
+		case strings.HasSuffix(name, ".js"):
+			contentType = "application/javascript; charset=utf-8"
+		case strings.HasSuffix(name, ".json"):
+			contentType = "application/json"
+		case strings.HasSuffix(name, ".webmanifest"):
+			contentType = "application/manifest+json"
+		}
+		if contentType != "" {
+			w.Header().Set("Content-Type", contentType)
 		}
 
 		// Cache control: immutable files (content-hashed by vite) cache forever,
@@ -1184,7 +1177,7 @@ func (s *Server) spaHandler() http.Handler {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		}
 
-		http.ServeFile(w, r, path)
+		http.ServeFileFS(w, r, staticFS, name)
 	})
 }
 

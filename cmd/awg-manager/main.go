@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"runtime"
 
+	"github.com/hoaxisr/awg-manager/frontend"
 	"github.com/hoaxisr/awg-manager/internal/accesspolicy"
 	"github.com/hoaxisr/awg-manager/internal/api"
 	"github.com/hoaxisr/awg-manager/internal/auth"
@@ -76,7 +77,6 @@ import (
 
 const (
 	defaultDataDir = "/opt/etc/awg-manager"
-	defaultWebRoot = "/opt/share/www/awg-manager"
 	// pidFile lives on the system tmpfs (cleared on every boot) so an
 	// unclean reboot can never leave a stale PID pointing at whatever
 	// process eventually inherits that PID slot on the next uptime.
@@ -177,7 +177,6 @@ func (a *deviceproxySubscriptionOutboundsAdapter) ListDeviceProxyOutbounds() []d
 
 func main() {
 	dataDir := flag.String("data-dir", defaultDataDir, "Data directory path")
-	webRoot := flag.String("web-root", defaultWebRoot, "Path to static web files")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	cleanup := flag.Bool("cleanup", false, "Stop and delete all tunnels, then exit (for uninstall)")
 	serviceAction := flag.String("service", "", "Service management (start|stop|restart|status)")
@@ -204,7 +203,7 @@ func main() {
 
 	// Service management (start/stop/restart/status)
 	if *serviceAction != "" {
-		runService(*serviceAction, *dataDir, *webRoot)
+		runService(*serviceAction, *dataDir)
 		os.Exit(0)
 	}
 
@@ -862,11 +861,16 @@ func main() {
 	if *slowReqMS > 0 {
 		slowHTTPThreshold = time.Duration(*slowReqMS) * time.Millisecond
 	}
+	frontendFS, err := frontend.FS()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load embedded frontend: %v\n", err)
+		os.Exit(1)
+	}
 
 	srv := server.New(
 		server.Config{
 			Version:              version,
-			WebRoot:              *webRoot,
+			FrontendFS:           frontendFS,
 			PprofStandaloneAddr:  strings.TrimSpace(*pprofListen),
 			PprofOnMain:          *pprofOnMain,
 			SlowRequestThreshold: slowHTTPThreshold,
@@ -1436,16 +1440,16 @@ func getUptime() float64 {
 
 // runService handles --service flag: start/stop/restart/status.
 // This replaces the shell logic that was previously in S99awg-manager.
-func runService(action, dataDir, webRoot string) {
+func runService(action, dataDir string) {
 	switch action {
 	case "start":
-		serviceStart(dataDir, webRoot)
+		serviceStart(dataDir)
 	case "stop":
 		serviceStop()
 	case "restart":
 		serviceStop()
 		time.Sleep(time.Second)
-		serviceStart(dataDir, webRoot)
+		serviceStart(dataDir)
 	case "status":
 		serviceStatus(dataDir)
 	default:
@@ -1455,7 +1459,7 @@ func runService(action, dataDir, webRoot string) {
 }
 
 // serviceStart starts the daemon as a background process with PID file management.
-func serviceStart(dataDir, webRoot string) {
+func serviceStart(dataDir string) {
 	// Check if already running
 	if pid, running := readPIDFile(); running {
 		fmt.Printf("AWG Manager already running (PID %d)\n", pid)
@@ -1480,7 +1484,7 @@ func serviceStart(dataDir, webRoot string) {
 	ensureServiceEnv()
 
 	// Start the daemon without --service flag
-	cmd := exec.Command(executable, "-data-dir", dataDir, "-web-root", webRoot)
+	cmd := exec.Command(executable, "-data-dir", dataDir)
 	setServiceSysProcAttr(cmd)
 
 	devNull, err := os.Open(os.DevNull)
