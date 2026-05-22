@@ -332,7 +332,7 @@ func main() {
 		IsOS5:        osdetect.Is5,
 	})
 
-	operator := ops.NewOperator(ndmsQueries, ndmsCommands, wgClient, backendImpl, firewallMgr, log)
+	operator := ops.NewOperator(ndmsQueries, ndmsCommands, wgClient, backendImpl, firewallMgr)
 
 	// Create NativeWG operator
 	nwgOp := nwg.NewOperator(ndmsQueries, ndmsCommands, ndmsTransportClient, loggingService)
@@ -434,7 +434,7 @@ func main() {
 	staticRouteStore := storage.NewStaticRouteStore(*dataDir)
 
 	// Create external tunnel service
-	externalService := external.NewService(awgStore, settingsStore, tunnelService, log)
+	externalService := external.NewService(awgStore, settingsStore, tunnelService, loggingService)
 
 	// System WireGuard tunnels (read-only + ASC editing) — constructed later,
 	// after ndmsQueries/ndmsCommands are available.
@@ -1717,7 +1717,7 @@ func runCleanup(dataDir string) {
 		IsOS5:   osdetect.Is5,
 	})
 
-	operator := ops.NewOperator(cleanupNDMSQueries, cleanupNDMSCommands, wgClient, backendImpl, firewallMgr, log)
+	operator := ops.NewOperator(cleanupNDMSQueries, cleanupNDMSCommands, wgClient, backendImpl, firewallMgr)
 
 	nwgOp := nwg.NewOperator(cleanupNDMSQueries, cleanupNDMSCommands, cleanupNDMSTransport, nil)
 	tunnelService := service.New(awgStore, nwgOp, operator, stateMgr, wan.NewModel(), nil)
