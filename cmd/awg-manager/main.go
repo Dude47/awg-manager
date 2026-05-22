@@ -367,7 +367,7 @@ func main() {
 	)
 
 	// HydraRoute Neo integration (optional — detected at startup)
-	hydraService := hydraroute.NewService(catalog, log, loggingService)
+	hydraService := hydraroute.NewService(catalog, loggingService)
 	geoDataStore := hydraroute.NewGeoDataStore(*dataDir)
 	geoDataStore.SetAppLogger(loggingService)
 	hydraService.SetGeoDataStore(geoDataStore)
@@ -547,11 +547,11 @@ func main() {
 	)
 
 	// Static route service — wired to NDMS RouteCommands.
-	staticRouteService := staticroute.New(staticRouteStore, ndmsCommands.Routes, catalog, log, loggingService)
+	staticRouteService := staticroute.New(staticRouteStore, ndmsCommands.Routes, catalog, loggingService)
 	orch.SetStaticRoute(staticRouteService)
 
 	// DNS route service — wired to NDMS CQRS layer.
-	dnsRouteService := dnsroute.NewService(dnsRouteStore, ndmsQueries, ndmsCommands, catalog, log, loggingService)
+	dnsRouteService := dnsroute.NewService(dnsRouteStore, ndmsQueries, ndmsCommands, catalog, loggingService)
 
 	// DNS route failover — switches DNS targets when pingcheck detects tunnel failure.
 	dnsFailover := dnsroute.NewFailoverManager(func() error {
@@ -573,11 +573,11 @@ func main() {
 	}
 
 	// DNS route subscription auto-refresh scheduler
-	dnsRefreshScheduler := dnsroute.NewScheduler(dnsRouteService, settingsStore, log)
+	dnsRefreshScheduler := dnsroute.NewScheduler(dnsRouteService, settingsStore, loggingService)
 	dnsRefreshScheduler.Start()
 
 	// Access policy service (NDMS ip policy management) — wired to CQRS layer.
-	accessPolicySvc := accesspolicy.New(ndmsCommands.Policies, ndmsCommands.Interfaces, ndmsQueries, settingsStore, log, loggingService, ndmsquery.NewPolicyMarkStore(ndmsTransportClient, log))
+	accessPolicySvc := accesspolicy.New(ndmsCommands.Policies, ndmsCommands.Interfaces, ndmsQueries, settingsStore, loggingService, ndmsquery.NewPolicyMarkStore(ndmsTransportClient, log))
 
 	// HydraRoute NDMS wiring — now that ndmsCommands/Queries are ready.
 	hydraService.SetQueries(ndmsQueries)
@@ -1755,7 +1755,7 @@ func runCleanup(dataDir string) {
 
 	// DNS route service wired to cleanup NDMS CQRS layer (OS5 only — OS4
 	// short-circuits inside reconcile via ErrNotSupportedOnOS4).
-	dnsSvc := dnsroute.NewService(dnsStore, cleanupNDMSQueries, cleanupNDMSCommands, nil, log, nil)
+	dnsSvc := dnsroute.NewService(dnsStore, cleanupNDMSQueries, cleanupNDMSCommands, nil, nil)
 
 	singboxOp := singbox.NewOperator(singbox.OperatorDeps{
 		Log:      slog.Default().With("component", "singbox"),
@@ -1784,7 +1784,7 @@ func runCleanup(dataDir string) {
 	}
 	singboxOp.SetOrch(cleanupSbOrch)
 
-	accessPolicySvc := accesspolicy.New(cleanupNDMSCommands.Policies, cleanupNDMSCommands.Interfaces, cleanupNDMSQueries, settingsStore, log, nil, ndmsquery.NewPolicyMarkStore(cleanupNDMSTransport, log))
+	accessPolicySvc := accesspolicy.New(cleanupNDMSCommands.Policies, cleanupNDMSCommands.Interfaces, cleanupNDMSQueries, settingsStore, nil, ndmsquery.NewPolicyMarkStore(cleanupNDMSTransport, log))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
