@@ -144,6 +144,13 @@ type Operator struct {
 	// ndmsProxyEnabledFn is the late-bound closure from OperatorDeps.IsNDMSProxyEnabled.
 	// nil means "treat as enabled" for back-compat (pre-dates this field).
 	ndmsProxyEnabledFn func() bool
+
+	// migrationMu serialises all lifecycle ops that touch ProxyManager:
+	// AddTunnels, RemoveTunnel, MigrateOff/On, Reconcile orphan cleanup.
+	// Required because toggle and tunnel lifecycle race — a flag flip
+	// during AddTunnels could leave a tunnel with NDMS state inconsistent
+	// with the new mode.
+	migrationMu sync.Mutex
 }
 
 // OperatorDeps are external dependencies for DI.
@@ -222,6 +229,10 @@ func NewOperator(d OperatorDeps) *Operator {
 	op.proc.OnExit = op.handleExit
 	return op
 }
+
+// migrationLock is for cross-file ops in this package (e.g.
+// MigrateOff/On) that must run under the same mutex as AddTunnels.
+func (o *Operator) migrationLock() *sync.Mutex { return &o.migrationMu }
 
 // singBoxStderrTextHead matches the wall-clock prefix sing-box's text logger
 // emits on stderr (e.g. "+0000 2026-05-14 21:45:56 …"). Used so JSON or

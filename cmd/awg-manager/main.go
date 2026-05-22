@@ -687,6 +687,7 @@ func main() {
 		// service toggling SingboxRouter) cannot silently overwrite it.
 		InitialManuallyStopped: settings.SingboxManuallyStopped,
 		SetManuallyStopped:     settingsStore.SetSingboxManuallyStopped,
+		IsNDMSProxyEnabled:     settingsStore.IsSingboxNDMSProxyEnabled,
 	})
 
 	// config.d orchestrator — the single writer of slot files (00-base /
@@ -1759,9 +1760,10 @@ func runCleanup(dataDir string) {
 	dnsSvc := dnsroute.NewService(dnsStore, cleanupNDMSQueries, cleanupNDMSCommands, nil, log, nil)
 
 	singboxOp := singbox.NewOperator(singbox.OperatorDeps{
-		Log:      slog.Default().With("component", "singbox"),
-		Queries:  cleanupNDMSQueries,
-		Commands: cleanupNDMSCommands,
+		Log:                slog.Default().With("component", "singbox"),
+		Queries:            cleanupNDMSQueries,
+		Commands:           cleanupNDMSCommands,
+		IsNDMSProxyEnabled: settingsStore.IsSingboxNDMSProxyEnabled,
 	})
 
 	// Cleanup mode: bootstrap the orchestrator so any subsequent
