@@ -32,7 +32,6 @@ import (
 	"github.com/hoaxisr/awg-manager/internal/dnsroute"
 	"github.com/hoaxisr/awg-manager/internal/events"
 	"github.com/hoaxisr/awg-manager/internal/hydraroute"
-	"github.com/hoaxisr/awg-manager/internal/logger"
 	"github.com/hoaxisr/awg-manager/internal/logging"
 	"github.com/hoaxisr/awg-manager/internal/managed"
 	"github.com/hoaxisr/awg-manager/internal/monitoring"
@@ -226,9 +225,6 @@ func main() {
 
 	uptime := getUptime()
 
-	log := logger.New()
-	defer log.Close()
-
 	// Settings (load first to get server config)
 	settingsStore := storage.NewSettingsStore(*dataDir)
 	settings, err := settingsStore.Load()
@@ -311,7 +307,7 @@ func main() {
 
 	// Create tunnel service components
 	wgClient := wg.New()
-	backendImpl := backend.New(log)
+	backendImpl := backend.New(bootLog)
 	stateMgr := state.New(ndmsQueries.Interfaces, wgClient, backendImpl, loggingService)
 	firewallMgr := firewall.New(backendImpl.Type() == backend.TypeKernel, osdetect.Is5(), loggingService)
 
@@ -440,10 +436,10 @@ func main() {
 	// after ndmsQueries/ndmsCommands are available.
 	var systemTunnelSvc *systemtunnel.ServiceImpl
 
-	testService := testing.NewService(awgStore, log, loggingService)
+	testService := testing.NewService(awgStore, loggingService)
 
 	// Ping check service
-	pingCheckService := pingcheck.NewService(settingsStore, awgStore, wgClient, log, loggingService)
+	pingCheckService := pingcheck.NewService(settingsStore, awgStore, wgClient, loggingService)
 	pingCheckService.Start()
 	defer pingCheckService.Stop()
 
@@ -464,7 +460,6 @@ func main() {
 	// Auth components
 	keeneticClient := auth.NewKeeneticClient()
 	sessionStore := auth.NewSessionStore()
-	sessionStore.SetLogger(log)
 	defer sessionStore.Stop()
 
 	operator.SetAppLogger(loggingService)
@@ -566,7 +561,6 @@ func main() {
 	})
 	dnsRouteService.SetHydraRoute(hydraService)
 	dnsRouteService.SetFailoverManager(dnsFailover)
-	dnsFailover.SetLogger(log)
 	dnsFailover.SetAffectedListsLookup(dnsRouteService.LookupAffectedLists)
 
 	if osdetect.Is5() {
@@ -578,7 +572,7 @@ func main() {
 	dnsRefreshScheduler.Start()
 
 	// Access policy service (NDMS ip policy management) — wired to CQRS layer.
-	accessPolicySvc := accesspolicy.New(ndmsCommands.Policies, ndmsCommands.Interfaces, ndmsQueries, settingsStore, loggingService, ndmsquery.NewPolicyMarkStore(ndmsTransportClient, log))
+	accessPolicySvc := accesspolicy.New(ndmsCommands.Policies, ndmsCommands.Interfaces, ndmsQueries, settingsStore, loggingService, ndmsquery.NewPolicyMarkStore(ndmsTransportClient, nil))
 
 	// HydraRoute NDMS wiring — now that ndmsCommands/Queries are ready.
 	hydraService.SetQueries(ndmsQueries)
@@ -1671,12 +1665,6 @@ func runCleanup(dataDir string) {
 	defer loggingService.Stop()
 	bootLog := logging.NewScopedLogger(loggingService, logging.GroupSystem, logging.SubCleanup)
 
-	// Legacy *logger.Logger kept for cleanup-time downstream constructors
-	// (backend.New, ndmsquery.NewPolicyMarkStore) that still take it. They
-	// are no-ops; the real cleanup logs come through bootLog above.
-	log := logger.New()
-	_ = log
-
 	awgStore := storage.NewAWGTunnelStore(filepath.Join(dataDir, "tunnels"))
 
 	// Build minimal NDMS CQRS layer first — state.Manager consumes
@@ -1698,7 +1686,7 @@ func runCleanup(dataDir string) {
 
 	// Create service components
 	wgClient := wg.New()
-	backendImpl := backend.New(log)
+	backendImpl := backend.New(bootLog)
 	stateMgr := state.New(cleanupNDMSQueries.Interfaces, wgClient, backendImpl, nil)
 	firewallMgr := firewall.New(backendImpl.Type() == backend.TypeKernel, osdetect.Is5(), nil)
 
@@ -1787,7 +1775,7 @@ func runCleanup(dataDir string) {
 	}
 	singboxOp.SetOrch(cleanupSbOrch)
 
-	accessPolicySvc := accesspolicy.New(cleanupNDMSCommands.Policies, cleanupNDMSCommands.Interfaces, cleanupNDMSQueries, settingsStore, nil, ndmsquery.NewPolicyMarkStore(cleanupNDMSTransport, log))
+	accessPolicySvc := accesspolicy.New(cleanupNDMSCommands.Policies, cleanupNDMSCommands.Interfaces, cleanupNDMSQueries, settingsStore, nil, ndmsquery.NewPolicyMarkStore(cleanupNDMSTransport, nil))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
