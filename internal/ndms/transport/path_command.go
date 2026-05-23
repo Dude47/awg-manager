@@ -77,13 +77,20 @@ func pathToCommand(path string) (any, []string, error) {
 		leafKey = last
 		leafValue = map[string]any{}
 		segments = segments[:len(segments)-1]
-	} else if len(segments) == 3 {
-		// "/show/interface/Wireguard0" → last "Wireguard0" is name-value of "interface"
-		leafKey = segments[len(segments)-2]
+	} else if len(segments) == 3 && segments[1] == "interface" {
+		// "/show/interface/Wireguard0" — единственный известный 3-сегментный
+		// путь, где последний сегмент это NAME parameter, а не resource leaf.
+		// Все остальные 3-seg пути (/show/ip/hotspot, /show/ip/route,
+		// /show/ip/policy, /show/rc/dns-proxy, /show/wireguard/server, …) —
+		// это путь до leaf'а, last обрабатывается ниже в общей ветке.
+		leafKey = "interface"
 		leafValue = map[string]any{"name": last}
 		segments = segments[:len(segments)-2]
 	} else {
-		// len == 2 (например "/show/running-config")
+		// Общий случай: last — leaf endpoint без параметров.
+		// Покрывает 2-seg ("/show/version", "/show/running-config"),
+		// 3-seg не-interface ("/show/ip/hotspot"),
+		// 4+-seg ("/show/rc/ip/host", "/show/sc/dns-proxy/route", …).
 		leafKey = last
 		leafValue = map[string]any{}
 		segments = segments[:len(segments)-1]

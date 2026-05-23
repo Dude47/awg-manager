@@ -48,6 +48,46 @@ func TestPathToCommand(t *testing.T) {
 			[]string{"show", "rc", "object-group", "fqdn"},
 			false,
 		},
+		// Regression: ранее ветка len==3 безусловно трактовала last как
+		// "name parameter" предыдущего узла, превращая /show/ip/hotspot в
+		// {show:{ip:{name:"hotspot"}}} вместо {show:{ip:{hotspot:{}}}}. NDMS
+		// на такой кривой запрос отвечает {show:{ip:{}}}, HotspotStore
+		// получает пустое тело → 0 устройств в access policies UI.
+		{
+			"3-seg /show/ip/hotspot — last is leaf, not interface-name",
+			"/show/ip/hotspot",
+			map[string]any{"show": map[string]any{"ip": map[string]any{"hotspot": map[string]any{}}}},
+			[]string{"show", "ip", "hotspot"},
+			false,
+		},
+		{
+			"3-seg /show/ip/policy",
+			"/show/ip/policy",
+			map[string]any{"show": map[string]any{"ip": map[string]any{"policy": map[string]any{}}}},
+			[]string{"show", "ip", "policy"},
+			false,
+		},
+		{
+			"3-seg /show/ip/route",
+			"/show/ip/route",
+			map[string]any{"show": map[string]any{"ip": map[string]any{"route": map[string]any{}}}},
+			[]string{"show", "ip", "route"},
+			false,
+		},
+		{
+			"3-seg /show/rc/dns-proxy",
+			"/show/rc/dns-proxy",
+			map[string]any{"show": map[string]any{"rc": map[string]any{"dns-proxy": map[string]any{}}}},
+			[]string{"show", "rc", "dns-proxy"},
+			false,
+		},
+		{
+			"3-seg /show/wireguard/server",
+			"/show/wireguard/server",
+			map[string]any{"show": map[string]any{"wireguard": map[string]any{"server": map[string]any{}}}},
+			[]string{"show", "wireguard", "server"},
+			false,
+		},
 		{
 			"running-config no params",
 			"/show/running-config",
