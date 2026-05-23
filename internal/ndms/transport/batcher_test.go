@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -301,5 +302,118 @@ func TestBatcher_AllCancelled_NoPostMade(t *testing.T) {
 
 	if got := posted.Load(); got != 0 {
 		t.Errorf("HTTP POST count = %d, want 0 (all cancelled)", got)
+	}
+}
+
+func TestBatcher_TransportError_AllReceiversGetError(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}
+	b, cleanup := newTestBatcher(t, handler, 10*time.Millisecond)
+	defer cleanup()
+
+	ctx := context.Background()
+	errs := make(chan error, 3)
+	for i := 0; i < 3; i++ {
+		go func(i int) {
+			_, err := b.Submit(ctx, fmt.Sprintf("/show/x-%d/", i))
+			errs <- err
+		}(i)
+	}
+	for i := 0; i < 3; i++ {
+		err := <-errs
+		if err == nil {
+			t.Errorf("submit %d: want error, got nil", i)
+			continue
+		}
+		if !strings.Contains(err.Error(), "rci batch") && !strings.Contains(err.Error(), "500") {
+			t.Errorf("submit %d: err = %v, want batch/transport wrapper", i, err)
+		}
+	}
+}
+
+func TestBatcher_ResponseNotArray_AllFailWithShape(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"not":"an array"}`))
+	}
+	b, cleanup := newTestBatcher(t, handler, 10*time.Millisecond)
+	defer cleanup()
+
+	_, err := b.Submit(context.Background(), "/show/x/")
+	if !errors.Is(err, ErrBatchResponseShape) {
+		t.Errorf("err = %v, want ErrBatchResponseShape", err)
+	}
+}
+
+func TestBatcher_ResponseLengthMismatch_AllFailSentinel(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		// Always return single-element array regardless of batch size.
+		_, _ = w.Write([]byte(`[{"one":"only"}]`))
+	}
+	b, cleanup := newTestBatcher(t, handler, 30*time.Millisecond)
+	defer cleanup()
+
+	ctx := context.Background()
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func(i int) {
+			_, err := b.Submit(ctx, fmt.Sprintf("/show/x-%d/", i))
+			errs <- err
+		}(i)
+	}
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		if !errors.Is(err, ErrBatchLengthMismatch) {
+			t.Errorf("err = %v, want ErrBatchLengthMismatch", err)
+		}
+	}
+}
+
+func TestBatcher_PerItemNDMSError_OnlyThatReceiverFails(t *testing.T) {
+	// Handler inspects each batch element's raw JSON: if it contains the
+	// string "err-path" it returns an NDMS error envelope, otherwise ok.
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var batch []json.RawMessage
+		_ = json.Unmarshal(body, &batch)
+		responses := make([]json.RawMessage, len(batch))
+		for i, item := range batch {
+			if strings.Contains(string(item), "err-path") {
+				// NDMS error envelope (per errors.go:ExtractError: status==error + message).
+				responses[i] = json.RawMessage(`{"status":"error","message":"some error"}`)
+			} else {
+				responses[i] = json.RawMessage(`{"data":"ok"}`)
+			}
+		}
+		out, _ := json.Marshal(responses)
+		_, _ = w.Write(out)
+	}
+	b, cleanup := newTestBatcher(t, handler, 30*time.Millisecond)
+	defer cleanup()
+
+	ctx := context.Background()
+	var (
+		errOK0, errOK1, errFail error
+		wg                      sync.WaitGroup
+	)
+	wg.Add(3)
+	go func() { defer wg.Done(); _, errOK0 = b.Submit(ctx, "/show/ok-path-0/") }()
+	go func() { defer wg.Done(); _, errFail = b.Submit(ctx, "/show/err-path/") }()
+	go func() { defer wg.Done(); _, errOK1 = b.Submit(ctx, "/show/ok-path-1/") }()
+	wg.Wait()
+
+	if errOK0 != nil {
+		t.Errorf("ok-path-0: err = %v, want nil", errOK0)
+	}
+	if errOK1 != nil {
+		t.Errorf("ok-path-1: err = %v, want nil", errOK1)
+	}
+	if errFail == nil {
+		t.Errorf("err-path: want error, got nil")
+	} else {
+		var ndmsErr *NDMSAppError
+		if !errors.As(errFail, &ndmsErr) {
+			t.Errorf("err-path: err = %v, want *NDMSAppError", errFail)
+		}
 	}
 }
