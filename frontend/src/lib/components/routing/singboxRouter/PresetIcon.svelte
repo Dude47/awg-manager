@@ -16,12 +16,15 @@
 	} from 'lucide-svelte';
 	import { brandIcons } from '$lib/generated/brandIcons';
 	import { getPresetInlineIcon, type ServiceIconConfig } from '$lib/utils/service-icons';
+	import LetterIconTile from '$lib/components/dnsroutes/LetterIconTile.svelte';
 
 	interface Props {
 		slug?: string;
 		size?: number;
+		/** Used for letter monogram when slug has no brand/inline art. */
+		label?: string;
 	}
-	let { slug, size = 36 }: Props = $props();
+	let { slug, size = 36, label = '' }: Props = $props();
 
 	interface BrandIconResolved {
 		kind: 'brand';
@@ -92,7 +95,7 @@
 
 <div class="icon-box" style="width:{size}px;height:{size}px">
 	{#if resolved === null}
-		<span class="fallback" style="font-size:{Math.floor(size * 0.5)}px">?</span>
+		<LetterIconTile label={label || slug || '?'} {size} />
 	{:else if resolved.kind === 'brand'}
 		<div class="brand" style="background:{resolved.hex}">
 			<svg viewBox="0 0 24 24" width={size * 0.56} height={size * 0.56} fill="white" xmlns="http://www.w3.org/2000/svg">
@@ -159,16 +162,5 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-	}
-	.fallback {
-		width: 100%;
-		height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--bg);
-		border-radius: 6px;
-		color: var(--muted-text);
-		font-weight: 600;
 	}
 </style>

@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { getServiceIcon } from '$lib/utils/service-icons';
+	import { getServiceIcon, hasServiceIconKeywordMatch } from '$lib/utils/service-icons';
 	import { resolveIconSlug, isPresetIconResolvable } from '$lib/utils/resolve-icon-slug';
 	import { resolveIconTileBackground } from '$lib/utils/icon-tile-background';
 	import { iconImageSrc } from '$lib/utils/icon-url-meta';
 	import PresetIcon from '$lib/components/routing/singboxRouter/PresetIcon.svelte';
+	import { serviceLetterIcons } from '$lib/stores/serviceLetterIcons';
 	import IconTile from './IconTile.svelte';
+	import LetterIconTile from './LetterIconTile.svelte';
 
 	interface Props {
 		name: string;
@@ -25,14 +27,20 @@
 
 	// Fallback chain:
 	//   1. explicit iconUrl (user-picked Qure / custom URL) → tiled <img>
-	//   2. PresetIcon via iconSlug (same as SingBox router / HydraRoute presets)
-	//   3. keyword inline SVG (service-icons.ts)
-	//   4. globe default
+	//   2. PresetIcon via iconSlug (preset id / exact name / brand slug)
+	//   3. keyword inline SVG (service-icons.ts, substring match)
+	//   4. letter monogram (NDMS / HR, only when nothing above matched)
+	//   5. globe default (when service letter icons disabled in settings)
 	let slug = $derived(resolveIconSlug(name, iconSlug));
 	let usePreset = $derived(!iconUrl && !!slug && isPresetIconResolvable(slug));
+	let hasKeywordIcon = $derived(hasServiceIconKeywordMatch(name));
 
 	let renderSrc = $derived(iconUrl && !imgFailed ? iconImageSrc(iconUrl) : null);
 	let tileBg = $derived(iconUrl ? resolveIconTileBackground(name, iconUrl) : '');
+
+	let useLetter = $derived(
+		$serviceLetterIcons && !iconUrl && !usePreset && !hasKeywordIcon,
+	);
 
 	let inlineIcon = $derived(getServiceIcon(name));
 	let innerSize = $derived.by(() => {
@@ -50,7 +58,9 @@
 		onerror={() => (imgFailed = true)}
 	/>
 {:else if usePreset && slug}
-	<PresetIcon {slug} {size} />
+	<PresetIcon {slug} {size} label={name} />
+{:else if useLetter}
+	<LetterIconTile label={name} {size} />
 {:else}
 	<div
 		class="service-icon"

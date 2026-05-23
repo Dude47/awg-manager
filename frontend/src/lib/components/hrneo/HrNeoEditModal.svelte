@@ -7,7 +7,7 @@
 	} from '$lib/types';
 	import { SERVICE_PRESETS, type ServicePreset } from '$lib/data/presets';
 	import { Modal, Button, IconButton, Dropdown, type DropdownOption } from '$lib/components/ui';
-	import { ServiceIcon } from '$lib/components/dnsroutes';
+	import { CatalogPresetRow, ServiceIcon } from '$lib/components/dnsroutes';
 	import { InterfaceList } from '$lib/components/accesspolicy';
 	import HrNeoGeoTagPicker from './HrNeoGeoTagPicker.svelte';
 	import { buildRoutingTunnelDropdownOptions } from '$lib/utils/routingTunnelOptions';
@@ -379,13 +379,12 @@
 	{#if presetPickerOpen}
 		<div class="preset-catalog">
 			{#each usablePresets as p (p.id)}
-				<button type="button" class="preset-card" onclick={() => applyPreset(p)}>
-					<ServiceIcon name={p.name} iconSlug={p.id} size={36} />
-					<div class="preset-card-body">
-						<div class="preset-card-name">{p.name}</div>
-						<div class="preset-card-meta">{p.domains?.length ?? 0} записей</div>
-					</div>
-				</button>
+				<CatalogPresetRow
+					name={p.name}
+					iconSlug={p.id}
+					meta={`${p.domains?.length ?? 0} записей`}
+					onclick={() => applyPreset(p)}
+				/>
 			{/each}
 		</div>
 	{/if}
@@ -615,45 +614,14 @@
 	}
 
 	.preset-catalog {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 6px;
-		padding: 10px;
+		display: flex;
+		flex-direction: column;
 		background: var(--color-bg-secondary);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		margin-bottom: 14px;
-		max-height: 260px;
+		max-height: 280px;
 		overflow-y: auto;
-	}
-	.preset-card {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 8px;
-		background: var(--color-bg-tertiary);
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		cursor: pointer;
-		text-align: left;
-		font-family: inherit;
-		color: var(--color-text-primary);
-		transition: border-color 0.15s;
-	}
-	.preset-card:hover {
-		border-color: var(--color-accent);
-	}
-	.preset-card-body {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-	}
-	.preset-card-name {
-		font-weight: 600;
-	}
-	.preset-card-meta {
-		color: var(--color-text-muted);
-		font-size: 0.75rem;
 	}
 
 	.form-section {
@@ -783,9 +751,4 @@
 		border-color: var(--color-error);
 	}
 
-	@media (max-width: 640px) {
-		.preset-catalog {
-			grid-template-columns: 1fr;
-		}
-	}
 </style>

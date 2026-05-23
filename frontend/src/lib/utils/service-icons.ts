@@ -252,6 +252,12 @@ export function isPresetInlineSlug(slug: string): boolean {
 	return PRESET_INLINE_SLUGS.has(slug);
 }
 
+/** Substring match against service-icons keywords (e.g. "YouTube DISABLED" → youtube). */
+export function hasServiceIconKeywordMatch(name: string): boolean {
+	const lower = name.toLowerCase();
+	return ICONS.some((entry) => entry.keywords.some((kw) => lower.includes(kw)));
+}
+
 export function getServiceIcon(name: string): ServiceIconConfig {
 	const lower = name.toLowerCase();
 	for (const entry of ICONS) {

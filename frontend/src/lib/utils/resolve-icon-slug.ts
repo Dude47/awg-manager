@@ -27,6 +27,8 @@ const NAME_ALIASES: Record<string, string> = {
 	gemini: 'googlegemini',
 	торренты: 'torrents',
 	'заблокировано в рф': 'rkn',
+	'реклама и трекеры': 'lucide-circle-slash',
+	'недоступно из рф': 'lucide-globe-lock',
 	atlassian: 'atlassian',
 	bitbucket: 'atlassian',
 	jira: 'atlassian',

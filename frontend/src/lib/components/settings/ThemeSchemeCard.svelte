@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button, Toggle } from '$lib/components/ui';
 	import { compactLayout } from '$lib/stores/compactLayout';
+	import { serviceLetterIcons } from '$lib/stores/serviceLetterIcons';
 	import { usageLevel } from '$lib/stores/settings';
 	import {
 		theme,
@@ -52,23 +53,6 @@
 
 <div class="card">
 	<div class="section-label">Внешний вид</div>
-	<div class="setting-row compact-layout-row">
-		<div class="flex flex-col gap-1">
-			<span class="font-medium">Компактный режим</span>
-			<span class="setting-description">
-				{#if compactForced}
-					В базовом режиме всегда включена: колонка 960px и меньшие боковые отступы.
-				{:else}
-					Сужает интерфейс с краев как в версии 2.8.2, фокусируя внимание на центре экрана (автоматически включается в базовом режиме).
-				{/if}
-			</span>
-		</div>
-		<Toggle
-			checked={compactChecked}
-			disabled={compactForced}
-			onchange={(enabled) => compactLayout.setEnabled(enabled)}
-		/>
-	</div>
 	<div class="setting-row">
 		<button
 			type="button"
@@ -216,22 +200,55 @@
 			{/if}
 		</div>
 	{/if}
+
+	<div class="setting-row compact-layout-row">
+		<div class="flex flex-col gap-1">
+			<span class="font-medium">Компактный режим</span>
+			<span class="setting-description">
+				{#if compactForced}
+					В базовом режиме всегда включена: колонка 960px и меньшие боковые отступы.
+				{:else}
+					Сужает интерфейс с краев как в версии 2.8.2, фокусируя внимание на центре экрана (автоматически включается в базовом режиме).
+				{/if}
+			</span>
+		</div>
+		<Toggle
+			checked={compactChecked}
+			disabled={compactForced}
+			onchange={(enabled) => compactLayout.setEnabled(enabled)}
+		/>
+	</div>
+	<div class="setting-row letter-icons-row">
+		<div class="flex flex-col gap-1">
+			<span class="font-medium">Буквенные иконки</span>
+			<span class="setting-description">
+				Цветная плитка с первой буквой названия для списков маршрутизации если не была найден логотип. Иначе — универсальная иконка-глобус.
+			</span>
+		</div>
+		<Toggle
+			checked={$serviceLetterIcons}
+			onchange={(enabled) => serviceLetterIcons.setEnabled(enabled)}
+		/>
+	</div>
 </div>
 
 <style>
-	.compact-layout-row {
+	.compact-layout-row,
+	.letter-icons-row {
 		align-items: center;
 	}
 
 	@media (max-width: 640px) {
-		.compact-layout-row {
+		.compact-layout-row,
+		.letter-icons-row {
 			flex-direction: row;
 			align-items: center;
 			flex-wrap: nowrap;
 			gap: 0.75rem;
 		}
 
-		.compact-layout-row > *:first-child {
+		.compact-layout-row > *:first-child,
+		.letter-icons-row > *:first-child {
 			flex: 1 1 auto;
 			min-width: 0;
 		}
