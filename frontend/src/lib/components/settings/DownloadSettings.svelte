@@ -22,8 +22,20 @@
 		onSelectRoute,
 	}: Props = $props();
 
+	function maskSensitiveToken(token: string): string {
+		if (!token) return token;
+		if (token.length <= 6) return '*'.repeat(token.length);
+		return `${token.slice(0, 3)}${'*'.repeat(token.length - 6)}${token.slice(-3)}`;
+	}
+
+	function maskSensitiveInText(text: string): string {
+		if (!text) return text;
+		const hostLike = /\b([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+|\d{1,3}(?:\.\d{1,3}){3})\b/g;
+		return text.replace(hostLike, (m) => maskSensitiveToken(m));
+	}
+
 	function optionLabel(ob: DownloadOutbound): string {
-		return `${ob.label}${ob.detail ? ` - ${ob.detail}` : ''}${ob.available ? '' : ' (unavailable)'}`;
+		return `${maskSensitiveInText(ob.label)}${ob.detail ? ` - ${maskSensitiveInText(ob.detail)}` : ''}${ob.available ? '' : ' (unavailable)'}`;
 	}
 
 	const selectedTag = $derived(settings.download?.routeTag || 'direct');
@@ -37,7 +49,7 @@
 		if (!hasSelected && selectedTag) {
 			built.unshift({
 				value: selectedTag,
-				label: `Недоступный маршрут: ${selectedTag}`,
+				label: `Недоступный маршрут: ${maskSensitiveInText(selectedTag)}`,
 				disabled: true,
 			});
 		}

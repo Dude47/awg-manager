@@ -245,16 +245,28 @@
 		}
 	}
 
+	function maskSensitiveToken(token: string): string {
+		if (!token) return token;
+		if (token.length <= 6) return '*'.repeat(token.length);
+		return `${token.slice(0, 3)}${'*'.repeat(token.length - 6)}${token.slice(-3)}`;
+	}
+
+	function maskSensitiveInText(text: string): string {
+		if (!text) return text;
+		const hostLike = /\b([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+|\d{1,3}(?:\.\d{1,3}){3})\b/g;
+		return text.replace(hostLike, (m) => maskSensitiveToken(m));
+	}
+
 	function currentDownloadRouteLabel(): string {
 		const tag = settings?.download?.routeTag?.trim() || 'direct';
 		const match = downloadOutbounds.find((ob) => ob.tag === tag);
 		if (match) {
-			return `${match.label}${match.detail ? ` - ${match.detail}` : ''}${match.available ? '' : ' (недоступен)'}`;
+			return `${maskSensitiveInText(match.label)}${match.detail ? ` - ${maskSensitiveInText(match.detail)}` : ''}${match.available ? '' : ' (недоступен)'}`;
 		}
 		if (tag === 'direct') {
 			return 'Direct (WAN) - без туннеля';
 		}
-		return `Недоступный маршрут: ${tag}`;
+		return `Недоступный маршрут: ${maskSensitiveInText(tag)}`;
 	}
 
 	function scrollToSettingsHashTarget() {
