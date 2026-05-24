@@ -144,8 +144,8 @@ func (o *OperatorNativeWG) createViaBatch(ctx context.Context, stored *storage.A
 	ndmsName := names.NDMSName
 
 	// Resolve endpoint hostname -> IP (for validation only at create time;
-	// the actual proxy endpoint is set at Start time)
-	endpointIP, endpointPort, err := netutil.ResolveEndpoint(stored.Peer.Endpoint)
+	// the actual proxy endpoint is set at Start time). Uses retry + cache fallback.
+	endpointIP, endpointPort, err := o.resolveEndpointWithFallback(stored)
 	if err != nil {
 		return 0, fmt.Errorf("resolve endpoint: %w", err)
 	}
@@ -260,13 +260,10 @@ func (o *OperatorNativeWG) startNative(ctx context.Context, stored *storage.AWGT
 		}
 	}
 
-	// Resolve endpoint (fallback to cached IP if DNS unavailable at boot)
-	endpointIP, endpointPort, err := netutil.ResolveEndpoint(stored.Peer.Endpoint)
+	// Resolve endpoint (retry + cached IP fallback if DNS unavailable at boot)
+	endpointIP, endpointPort, err := o.resolveEndpointWithFallback(stored)
 	if err != nil {
-		endpointIP, endpointPort, err = o.fallbackResolve(stored, err)
-		if err != nil {
-			return err
-		}
+		return err
 	}
 	o.appLog.Full("start", stored.Name, fmt.Sprintf("Resolving endpoint %s -> %s:%d", stored.Peer.Endpoint, endpointIP, endpointPort))
 
@@ -311,14 +308,11 @@ func (o *OperatorNativeWG) startProxy(ctx context.Context, stored *storage.AWGTu
 	names := NewNWGNames(stored.NWGIndex)
 	pubkey := stored.Peer.PublicKey
 
-	// Resolve endpoint — kmod proxy connects to this IP
-	// Fallback to cached IP if DNS unavailable at boot
-	endpointIP, endpointPort, err := netutil.ResolveEndpoint(stored.Peer.Endpoint)
+	// Resolve endpoint — kmod proxy connects to this IP.
+	// Retry + cached IP fallback if DNS unavailable at boot.
+	endpointIP, endpointPort, err := o.resolveEndpointWithFallback(stored)
 	if err != nil {
-		endpointIP, endpointPort, err = o.fallbackResolve(stored, err)
-		if err != nil {
-			return err
-		}
+		return err
 	}
 
 	// Ensure kernel module is loaded
@@ -630,7 +624,13 @@ func (o *OperatorNativeWG) EnsureKmodLoaded() error {
 func (o *OperatorNativeWG) RestoreKmodTunnel(ctx context.Context, stored *storage.AWGTunnel) error {
 	bindIface := o.ResolveActiveWAN(ctx, stored)
 
-	kmodCfg, err := buildKmodConfig(stored, bindIface)
+	// Resolve with retry + cached IP fallback — boot DNS on the router may be
+	// slow/uncached (this is the path that previously failed hard).
+	endpointIP, endpointPort, err := o.resolveEndpointWithFallback(stored)
+	if err != nil {
+		return fmt.Errorf("build kmod config: %w", err)
+	}
+	kmodCfg, err := buildKmodConfigResolved(stored, endpointIP, endpointPort, bindIface)
 	if err != nil {
 		return fmt.Errorf("build kmod config: %w", err)
 	}
@@ -710,16 +710,6 @@ func (o *OperatorNativeWG) nextFreeIndex(ctx context.Context) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("all %d Wireguard slots are occupied", MaxTunnels)
-}
-
-// buildKmodConfig resolves the endpoint and builds a KmodConfig.
-// Used by RestoreKmodTunnel where we don't need the resolved IP separately.
-func buildKmodConfig(stored *storage.AWGTunnel, bindIface string) (KmodConfig, error) {
-	ip, port, err := netutil.ResolveEndpoint(stored.Peer.Endpoint)
-	if err != nil {
-		return KmodConfig{}, fmt.Errorf("resolve endpoint: %w", err)
-	}
-	return buildKmodConfigResolved(stored, ip, port, bindIface)
 }
 
 // buildKmodConfigResolved builds a KmodConfig with a pre-resolved endpoint IP.
