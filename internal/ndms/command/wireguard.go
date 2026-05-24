@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/hoaxisr/awg-manager/internal/ndms/query"
 )
@@ -59,13 +60,20 @@ func (c *WireguardCommands) ImportWireguardConfig(ctx context.Context, confData 
 		return "", fmt.Errorf("import wireguard: %w", err)
 	}
 
-	// Real NDMS response shape:
-	// {"interface":{"wireguard":{"import":{"created":"Wireguard0",...}}}}
+	// Real NDMS response shape (captured on 5.01.A.x):
+	// {"interface":{"wireguard":{"import":{
+	//   "intersects":"", "created":"Wireguard3",
+	//   "status":[{"status":"message","code":"...","ident":"...","message":"..."}]}}}}
 	var parsed struct {
 		Interface struct {
 			Wireguard struct {
 				Import struct {
-					Created string `json:"created"`
+					Intersects string `json:"intersects"`
+					Created    string `json:"created"`
+					Status     []struct {
+						Status  string `json:"status"`
+						Message string `json:"message"`
+					} `json:"status"`
 				} `json:"import"`
 			} `json:"wireguard"`
 		} `json:"interface"`
@@ -73,8 +81,23 @@ func (c *WireguardCommands) ImportWireguardConfig(ctx context.Context, confData 
 	if err := json.Unmarshal(resp, &parsed); err != nil {
 		return "", fmt.Errorf("import wireguard: decode: %w", err)
 	}
-	if parsed.Interface.Wireguard.Import.Created == "" {
-		return "", fmt.Errorf("import wireguard: empty created field in response")
+	imp := parsed.Interface.Wireguard.Import
+	if imp.Created == "" {
+		// The router accepted the request (HTTP 200) but did not return a
+		// created interface. The reason lives in the nested status[] array,
+		// which the top-level error envelope check does not inspect — surface
+		// it instead of an opaque message.
+		var msgs []string
+		for _, s := range imp.Status {
+			if s.Message != "" {
+				msgs = append(msgs, s.Message)
+			}
+		}
+		detail := strings.Join(msgs, "; ")
+		if detail == "" {
+			detail = "no status message"
+		}
+		return "", fmt.Errorf("import wireguard: router returned no created interface (intersects=%q; status: %s)", imp.Intersects, detail)
 	}
-	return parsed.Interface.Wireguard.Import.Created, nil
+	return imp.Created, nil
 }
