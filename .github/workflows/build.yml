@@ -222,10 +222,13 @@ jobs:
     needs:
       - build
       - test
+      - version
 
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
 
       - name: Download build results
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -233,6 +236,51 @@ jobs:
           pattern: result-*
           path: dist
           merge-multiple: true
+
+      - name: Setup go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version: 1.25.10
+
+      - name: Generate develop changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IPK_VERSION: ${{ needs.version.outputs.ipk_version }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          go build -o /tmp/changelog-gen ./cmd/changelog-gen
+
+          mkdir -p /tmp/prevcl
+          gh release download latest --dir /tmp/prevcl \
+            --pattern CHANGELOG.md --pattern RELEASED_SHA 2>/dev/null || true
+
+          START=""
+          if [[ -f /tmp/prevcl/RELEASED_SHA ]]; then
+            START="$(tr -d '[:space:]' < /tmp/prevcl/RELEASED_SHA)"
+          fi
+          if [[ -z "$START" ]] || ! git cat-file -e "${START}^{commit}" 2>/dev/null; then
+            START="$EVENT_BEFORE"
+          fi
+          if [[ -z "$START" ]] || [[ "$START" =~ ^0+$ ]] || ! git cat-file -e "${START}^{commit}" 2>/dev/null; then
+            START="${GITHUB_SHA}~1"
+          fi
+
+          echo "changelog range: ${START}..${GITHUB_SHA}"
+          git log --format='%s' "${START}..${GITHUB_SHA}" \
+            | /tmp/changelog-gen --version "$IPK_VERSION" --date "$(date +%F)" > /tmp/delta.md
+
+          PREV=/tmp/prevcl/CHANGELOG.md
+          [[ -f "$PREV" ]] || PREV=/dev/null
+          if [[ -s /tmp/delta.md ]]; then
+            cat /tmp/delta.md "$PREV" > dist/CHANGELOG.md
+          else
+            cat "$PREV" > dist/CHANGELOG.md
+          fi
+          printf '%s\n' "$GITHUB_SHA" > dist/RELEASED_SHA
+          echo "=== dist/CHANGELOG.md (head) ==="; head -20 dist/CHANGELOG.md || true
 
       - name: Publish pre-release
         env:
@@ -242,7 +290,7 @@ jobs:
           set -euo pipefail
 
           shopt -s nullglob
-          files=(./dist/awg-manager_* ./dist/sing-box-* ./dist/VERSION)
+          files=(./dist/awg-manager_* ./dist/sing-box-* ./dist/VERSION ./dist/CHANGELOG.md ./dist/RELEASED_SHA)
 
           if (( ${#files[@]} == 0 )); then
             echo "No release files found in ./dist"
