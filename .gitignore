@@ -2,6 +2,7 @@
 build/
 dist/
 /awg-manager
+/changelog-gen
 .gocache/
 *.test
 kmod/awg-proxy/out/awg-proxy-build.log
