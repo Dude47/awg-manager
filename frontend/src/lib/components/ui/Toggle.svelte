@@ -1,3 +1,7 @@
+<script lang="ts" module>
+    export type ToggleSpinnerPosition = 'before' | 'after';
+</script>
+
 <script lang="ts">
     interface Props {
         checked: boolean;
@@ -8,6 +12,8 @@
         hint?: string;
         size?: 'sm' | 'md';
         variant?: 'slider' | 'flip';
+        /** Spinner slot relative to the slider track (flip variant ignores this). */
+        spinner?: ToggleSpinnerPosition;
         // controlled: parent owns the state. The toggle does NOT self-commit
         // the click — it reverts the DOM to `checked` and lets the parent
         // drive the value via onchange. Needed when onchange defers the change
@@ -26,6 +32,7 @@
         hint = '',
         size = 'md',
         variant = 'slider',
+        spinner = 'before',
         controlled = false,
     }: Props = $props();
 
@@ -60,11 +67,16 @@
                         {/if}
                     </span>
                 </span>
-            {:else}
+            {:else if spinner === 'after'}
                 <span class="toggle-slider"></span>
                 <span class="toggle-spinner-slot" aria-hidden="true">
                     {#if loading}<span class="toggle-spinner"></span>{/if}
                 </span>
+            {:else}
+                <span class="toggle-spinner-slot" aria-hidden="true">
+                    {#if loading}<span class="toggle-spinner"></span>{/if}
+                </span>
+                <span class="toggle-slider"></span>
             {/if}
         </label>
         <div class="toggle-text">
@@ -85,11 +97,16 @@
                     {/if}
                 </span>
             </span>
-        {:else}
+        {:else if spinner === 'after'}
             <span class="toggle-slider"></span>
             <span class="toggle-spinner-slot" aria-hidden="true">
                 {#if loading}<span class="toggle-spinner"></span>{/if}
             </span>
+        {:else}
+            <span class="toggle-spinner-slot" aria-hidden="true">
+                {#if loading}<span class="toggle-spinner"></span>{/if}
+            </span>
+            <span class="toggle-slider"></span>
         {/if}
     </label>
 {/if}

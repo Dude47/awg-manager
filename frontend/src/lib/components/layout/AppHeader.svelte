@@ -432,6 +432,7 @@
 		align-items: center;
 		gap: 0.375rem;
 		justify-self: end;
+		flex-shrink: 0;
 	}
 
 	.user-chip {
@@ -572,12 +573,24 @@
 			display: none;
 		}
 
+		.nav-spacer {
+			display: none;
+		}
+
 		.hamburger {
 			display: inline-flex;
 		}
 
 		.header-inner {
-			grid-template-columns: 1fr auto;
+			grid-template-columns: minmax(0, 1fr) auto;
+		}
+
+		.brand-group {
+			min-width: 0;
+		}
+
+		.app-header.unauthenticated .wordmark {
+			display: none;
 		}
 
 		.mobile-backdrop {
@@ -627,10 +640,6 @@
 	}
 
 	@media (max-width: 640px) {
-		.app-header.unauthenticated .user-tools {
-			display: none;
-		}
-
 		.wordmark {
 			display: none;
 		}

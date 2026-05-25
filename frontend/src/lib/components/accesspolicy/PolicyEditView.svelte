@@ -155,6 +155,7 @@
 			<Toggle
 				checked={policy.standalone}
 				onchange={toggleStandalone}
+				spinner="after"
 				label="Standalone"
 				hint="Политика действует самостоятельно, без привязки к глобальным правилам, статические маршруты из основных настроек не копируются"
 			/>

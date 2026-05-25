@@ -45,7 +45,7 @@
 {#if href}
   <a
     class="btn"
-    class:has-icon-before={!!iconBefore || loading}
+    class:has-icon-before={!!iconBefore}
     class:has-icon-after={!!iconAfter}
     class:variant-primary={variant === 'primary'}
     class:variant-secondary={variant === 'secondary'}
@@ -68,7 +68,7 @@
     tabindex={isDisabled ? -1 : 0}
   >
     {#if loading}
-      <span class="icon icon-before spinner" aria-hidden="true"></span>
+      <span class="spinner" aria-hidden="true"></span>
     {:else if iconBefore}
       <span class="icon icon-before" aria-hidden="true">{@render iconBefore()}</span>
     {/if}
@@ -80,7 +80,7 @@
 {:else}
   <button
     class="btn"
-    class:has-icon-before={!!iconBefore || loading}
+    class:has-icon-before={!!iconBefore}
     class:has-icon-after={!!iconAfter}
     class:variant-primary={variant === 'primary'}
     class:variant-secondary={variant === 'secondary'}
@@ -99,7 +99,7 @@
     {title}
   >
     {#if loading}
-      <span class="icon icon-before spinner" aria-hidden="true"></span>
+      <span class="spinner" aria-hidden="true"></span>
     {:else if iconBefore}
       <span class="icon icon-before" aria-hidden="true">{@render iconBefore()}</span>
     {/if}
@@ -150,7 +150,24 @@
     pointer-events: none;
   }
 
-  .btn.full-width { width: 100%; }
+  .btn.full-width {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .btn.full-width .label {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .btn.full-width:not(:has(.icon-before)):not(:has(.icon-after)):not(:has(.spinner)) .label {
+    flex: 1;
+  }
+
+  .btn.full-width:has(.spinner) {
+    justify-content: center;
+  }
   .btn:disabled, .btn.is-disabled { opacity: 0.5; cursor: not-allowed; }
   .btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
@@ -235,7 +252,7 @@
   }
 
   /* Keep the ring circular in tight flex rows (e.g. diagnostics group headers). */
-  .btn:has(.spinner) {
+  .btn:has(.spinner):not(.full-width) {
     flex-shrink: 0;
     min-width: max-content;
   }
