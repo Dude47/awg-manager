@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/hoaxisr/awg-manager/internal/updater"
+)
 
 func TestGenerate_GroupsAndOrder(t *testing.T) {
 	subjects := []string{
@@ -57,4 +61,47 @@ func TestGenerate_EmptyInput(t *testing.T) {
 	if got := Generate(nil, "1.0.0", "2026-01-01"); got != "" {
 		t.Errorf("expected empty for nil input, got %q", got)
 	}
+}
+
+func TestGenerate_RoundTripParses(t *testing.T) {
+	subjects := []string{
+		"feat(frontend): селектор канала",
+		"fix(updater): выбор версии",
+		"refactor(x): cleanup",
+		"chore: bump",
+		"Merge branch 'develop'",
+	}
+	block := Generate(subjects, "2.11.2+r95", "2026-05-25")
+
+	entries, err := updater.ParseChangelog(block)
+	if err != nil {
+		t.Fatalf("ParseChangelog error: %v", err)
+	}
+	e, ok := entries["2.11.2+r95"]
+	if !ok {
+		t.Fatalf("version 2.11.2+r95 not parsed; got keys %v", keysOf(entries))
+	}
+	if e.Date != "2026-05-25" {
+		t.Errorf("date = %q, want 2026-05-25", e.Date)
+	}
+	if len(e.Groups) != 3 {
+		t.Fatalf("groups = %d, want 3 (Добавлено/Исправлено/Рефакторинг)", len(e.Groups))
+	}
+	wantHeadings := []string{"Добавлено", "Исправлено", "Рефакторинг"}
+	for i, want := range wantHeadings {
+		if e.Groups[i].Heading != want {
+			t.Errorf("group[%d].Heading = %q, want %q", i, e.Groups[i].Heading, want)
+		}
+		if len(e.Groups[i].Items) != 1 {
+			t.Errorf("group[%d] items = %d, want 1", i, len(e.Groups[i].Items))
+		}
+	}
+}
+
+func keysOf(m map[string]updater.Entry) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
 }
