@@ -4223,6 +4223,12 @@ definitions:
     type: object
   api.UpdateSettingsDTO:
     properties:
+      channel:
+        enum:
+        - stable
+        - develop
+        example: stable
+        type: string
       checkEnabled:
         example: true
         type: boolean
