@@ -17,3 +17,16 @@ func TestChangelogURLForChannel(t *testing.T) {
 		}
 	}
 }
+
+func TestChangelogURLForChannel_UsesEntwareRepoURL(t *testing.T) {
+	old := entwareRepoURL
+	entwareRepoURL = "http://example.test"
+	t.Cleanup(func() { entwareRepoURL = old })
+
+	if got := changelogURLForChannel("stable"); got != "http://example.test/CHANGELOG.md" {
+		t.Errorf("stable = %q, want http://example.test/CHANGELOG.md", got)
+	}
+	if got := changelogURLForChannel("develop"); got != "http://example.test/develop/CHANGELOG.md" {
+		t.Errorf("develop = %q, want http://example.test/develop/CHANGELOG.md", got)
+	}
+}

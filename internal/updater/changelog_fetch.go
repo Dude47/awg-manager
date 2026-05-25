@@ -11,10 +11,6 @@ import (
 	"github.com/hoaxisr/awg-manager/internal/downloader"
 )
 
-// defaultChangelogURL is the full URL to the CHANGELOG.md on the repo
-// server.
-const defaultChangelogURL = "http://repo.hoaxisr.ru/CHANGELOG.md"
-
 // changelogURLForChannel возвращает URL CHANGELOG.md для канала. develop
 // отдаётся из /develop. База берётся из entwareRepoURL (переопределяема в
 // тестах), чтобы остаться согласованной с Packages.gz.

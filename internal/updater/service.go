@@ -38,7 +38,7 @@ func New(version string, settings *storage.SettingsStore, appLogger logging.AppL
 		stop:       make(chan struct{}),
 		done:       make(chan struct{}),
 	}
-	s.changelog = newChangelogFetcher(defaultChangelogURL, 10*time.Minute, s.downloader)
+	s.changelog = newChangelogFetcher(changelogURLForChannel(channelStable), 10*time.Minute, s.downloader)
 	return s
 }
 
