@@ -21,6 +21,11 @@ import (
 // absorb a later, legitimate external edge.
 const expectedHookTTL = 15 * time.Second
 
+// bootQuiescenceWindow is how long after we (re)start a NativeWG tunnel we
+// treat an incoming conf=disabled as transient NDMS settling rather than a
+// stop command. See decideNDMSHook + updateState.
+const bootQuiescenceWindow = 20 * time.Second
+
 // PingCheckExecutor is the interface for monitoring operations.
 // Satisfied by *pingcheck.Facade.
 type PingCheckExecutor interface {
@@ -254,6 +259,10 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, event Event) error {
 		}
 	}
 
+	if event.Now.IsZero() {
+		event.Now = o.nowFn()
+	}
+
 	// Decide (under lock)
 	o.mu.Lock()
 	// Ensure tunnel is in cache (covers tunnels created/imported after startup)
@@ -332,6 +341,7 @@ func (o *Orchestrator) updateState(action Action) {
 	switch action.Type {
 	case ActionColdStartKernel, ActionStartNativeWG, ActionReconcileKernel, ActionResumeKernel:
 		t.Running = true
+		t.quiescentUntil = o.nowFn().Add(bootQuiescenceWindow)
 		// Refresh ActiveWAN from store. Execute layer persists the resolved
 		// WAN; we mirror it into the in-memory cache so decideWANDown can
 		// match correctly via affectedByWANDown.

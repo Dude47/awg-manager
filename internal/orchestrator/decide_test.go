@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"testing"
+	"time"
 
 	"github.com/hoaxisr/awg-manager/internal/storage"
 )
@@ -1467,5 +1468,45 @@ func TestDecideNDMSHook_ExternalDisabled_KernelTunnel(t *testing.T) {
 	}, &s)
 	if !hasAction(actions, ActionPersistStopped) {
 		t.Error("kernel tunnel: expected normal PersistStopped")
+	}
+}
+
+func TestDecide_NDMSHook_DisabledIgnoredDuringQuiescence(t *testing.T) {
+	s := newState()
+	now := time.Unix(2000, 0)
+	tun := &tunnelState{
+		ID: "awg11", Backend: "nativewg", Enabled: true, Running: true, NWGIndex: 2,
+		quiescentUntil: now.Add(10 * time.Second), // still settling
+	}
+	s.tunnels["awg11"] = tun
+	ev := Event{
+		Type: EventNDMSHook, Layer: "conf", Level: "disabled",
+		NDMSName: tun.ndmsName(), Now: now,
+	}
+
+	actions := decide(ev, &s)
+
+	if len(actions) != 0 {
+		t.Fatalf("a transient conf=disabled during quiescence must NOT stop the tunnel, got %d actions", len(actions))
+	}
+}
+
+func TestDecide_NDMSHook_DisabledStopsAfterQuiescence(t *testing.T) {
+	s := newState()
+	now := time.Unix(2000, 0)
+	tun := &tunnelState{
+		ID: "awg11", Backend: "nativewg", Enabled: true, Running: true, NWGIndex: 2,
+		quiescentUntil: now.Add(-1 * time.Second), // window elapsed
+	}
+	s.tunnels["awg11"] = tun
+	ev := Event{
+		Type: EventNDMSHook, Layer: "conf", Level: "disabled",
+		NDMSName: tun.ndmsName(), Now: now,
+	}
+
+	actions := decide(ev, &s)
+
+	if !hasAction(actions, ActionStopNativeWG) {
+		t.Fatal("a conf=disabled after the quiescence window must stop the tunnel (user intent honoured)")
 	}
 }

@@ -228,10 +228,15 @@ func decideNDMSHook(event Event, state *State) []Action {
 		if !t.Running {
 			return nil
 		}
-		// User intent (admin UI toggle) is respected. The previous nativewg
-		// branch fired ActionExternalRestart on every external disable —
-		// that caused the "tunnel re-enables itself after a manual disable"
-		// bug. Both backends now persist the disabled state cleanly.
+		// Boot-quiescence: ignore a transient conf=disabled that arrives while
+		// we are still bringing this tunnel up. NDMS emits its own disabled→
+		// running churn as it settles its WireGuard; acting on it here tears
+		// down a tunnel we just started (observed at boot: tunnel handshakes,
+		// then a stray disabled kills it ~1s later).
+		if !event.Now.IsZero() && event.Now.Before(t.quiescentUntil) {
+			return nil
+		}
+		// Outside the quiescence window, treat conf=disabled as user intent and stop.
 		return decideStop(Event{Type: EventStop, Tunnel: t.ID}, state)
 	}
 
