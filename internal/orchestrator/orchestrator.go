@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/hoaxisr/awg-manager/internal/events"
 	"github.com/hoaxisr/awg-manager/internal/logging"
@@ -14,6 +15,11 @@ import (
 	"github.com/hoaxisr/awg-manager/internal/tunnel/state"
 	"github.com/hoaxisr/awg-manager/internal/tunnel/wan"
 )
+
+// expectedHookTTL bounds how long a self-induced NDMS hook expectation
+// stays valid. Past it, the token is pruned so a stale expectation can't
+// absorb a later, legitimate external edge.
+const expectedHookTTL = 15 * time.Second
 
 // PingCheckExecutor is the interface for monitoring operations.
 // Satisfied by *pingcheck.Facade.
@@ -58,11 +64,11 @@ type Orchestrator struct {
 	expectedHooks []expectedHook
 
 	// Executors (no decision logic, only execution)
-	store      *storage.AWGTunnelStore
-	kernelOp   ops.Operator
-	nwgOp      *nwg.OperatorNativeWG
-	stateMgr   state.Manager
-	wanModel   *wan.Model
+	store    *storage.AWGTunnelStore
+	kernelOp ops.Operator
+	nwgOp    *nwg.OperatorNativeWG
+	stateMgr state.Manager
+	wanModel *wan.Model
 
 	// Downstream executors
 	pingCheck   PingCheckExecutor
@@ -75,6 +81,9 @@ type Orchestrator struct {
 
 	// Logging
 	appLog *logging.ScopedLogger
+
+	// clock returns current time; injectable for tests. nil → time.Now.
+	clock func() time.Time
 }
 
 // New creates a new Orchestrator.
@@ -94,6 +103,7 @@ func New(
 		stateMgr: stateMgr,
 		wanModel: wanModel,
 		appLog:   logging.NewScopedLogger(appLogger, logging.GroupTunnel, logging.SubOrchestrator),
+		clock:    time.Now,
 	}
 }
 
@@ -181,21 +191,46 @@ func (o *Orchestrator) LoadState(ctx context.Context) {
 
 // expectedHook represents an NDMS hook we expect from our own actions.
 type expectedHook struct {
-	ndmsName string
-	level    string
+	ndmsName  string
+	level     string
+	expiresAt time.Time
+}
+
+// nowFn returns the current time, honouring an injected clock in tests.
+func (o *Orchestrator) nowFn() time.Time {
+	if o.clock != nil {
+		return o.clock()
+	}
+	return time.Now()
 }
 
 // ExpectHook registers an expected NDMS hook (implements tunnel.HookNotifier).
-// Called by operators before InterfaceUp/Down.
+// Called by operators before InterfaceUp/Down. The expectation expires after
+// expectedHookTTL so a stale token cannot absorb an unrelated later edge.
 func (o *Orchestrator) ExpectHook(ndmsName, level string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.expectedHooks = append(o.expectedHooks, expectedHook{ndmsName, level})
+	o.expectedHooks = append(o.expectedHooks, expectedHook{
+		ndmsName:  ndmsName,
+		level:     level,
+		expiresAt: o.nowFn().Add(expectedHookTTL),
+	})
 }
 
-// consumeExpectedHook checks if an NDMS hook matches an expected one.
-// If yes, removes it from the queue and returns true.
+// consumeExpectedHook checks if an NDMS hook matches a non-expired expected
+// one. It first prunes expired expectations, then removes and returns true on
+// the first matching live entry.
 func (o *Orchestrator) consumeExpectedHook(ndmsName, level string) bool {
+	now := o.nowFn()
+	kept := o.expectedHooks[:0]
+	for _, h := range o.expectedHooks {
+		if now.After(h.expiresAt) {
+			continue
+		}
+		kept = append(kept, h)
+	}
+	o.expectedHooks = kept
+
 	for i, h := range o.expectedHooks {
 		if h.ndmsName == ndmsName && h.level == level {
 			o.expectedHooks = append(o.expectedHooks[:i], o.expectedHooks[i+1:]...)
@@ -363,4 +398,3 @@ func publishInvalidatedBus(bus *events.Bus, resource, reason string) {
 		Reason:   reason,
 	})
 }
-
