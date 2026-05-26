@@ -3,6 +3,7 @@
 	import { notifications } from '$lib/stores/notifications';
 	import type { SingboxRouterDNSRule, SingboxRouterDNSServer, SingboxRouterRuleSet } from '$lib/types';
 	import DNSRuleEditModal from './DNSRuleEditModal.svelte';
+	import { computeRuleSetUsage } from './ruleSetUsage';
 	import { Button } from '$lib/components/ui';
 	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
 	import CreateIcon from '$lib/components/ui/icons/CreateIcon.svelte';
@@ -128,6 +129,7 @@
 	<DNSRuleEditModal
 		{servers}
 		{availableRuleSets}
+		ruleSetUsage={computeRuleSetUsage(rules)}
 		onClose={() => (addMode = false)}
 		onSave={async (rule) => {
 			await api.singboxRouterAddDNSRule(rule);
@@ -143,6 +145,7 @@
 		rule={rules[idx]}
 		{servers}
 		{availableRuleSets}
+		ruleSetUsage={computeRuleSetUsage(rules, idx)}
 		onClose={() => (editIndex = null)}
 		onSave={async (rule) => {
 			await api.singboxRouterUpdateDNSRule(idx, rule);
@@ -294,5 +297,16 @@
 	}
 	.final-info strong {
 		color: var(--success, #22c55e);
+	}
+
+	@media (max-width: 720px) {
+		.col-header,
+		.row {
+			grid-template-columns: 28px 80px 1fr 60px 24px 24px;
+		}
+		.col-header > :nth-child(4),
+		.row > :nth-child(4) {
+			display: none;
+		}
 	}
 </style>
