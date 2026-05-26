@@ -279,8 +279,11 @@ func (o *Orchestrator) HandleEvent(ctx context.Context, event Event) error {
 	// Per-tunnel lock for execution
 	tunnelID := event.Tunnel
 	if tunnelID == "" {
-		// Multi-tunnel events (Boot, Reconnect, WAN): execute inline
-		return o.executeActions(ctx, actions)
+		// Multi-tunnel events (Boot, Reconnect, WAN): group actions per
+		// tunnel and run each group under that tunnel's lock so a concurrent
+		// single-tunnel NDMS hook for the same tunnel cannot interleave a
+		// Stop into the middle of our Start sequence (the boot kill race).
+		return o.executeActionsGrouped(ctx, actions)
 	}
 
 	// Single-tunnel event: lock that tunnel
@@ -324,6 +327,59 @@ func (o *Orchestrator) executeActions(ctx context.Context, actions []Action) err
 		o.updateState(action)
 	}
 	return firstErr
+}
+
+// groupContiguousByTunnel splits a flat action list into contiguous runs
+// sharing the same Tunnel value, preserving order. Boot/Reconnect/WANUp emit
+// each tunnel's actions contiguously, so those events are fully serialized
+// per tunnel. decideWANDown's non-ASC immediate-failover can emit a tunnel's
+// Suspend and failover-Start in separate phases (non-contiguous) → that
+// tunnel gets two groups and its lock is taken twice with a gap between;
+// still deadlock-free and correct in execution order, just not gap-free
+// against a concurrent hook. Tightening decideWANDown's ordering is tracked
+// separately (out of scope for the boot-race fix).
+func groupContiguousByTunnel(actions []Action) [][]Action {
+	var groups [][]Action
+	i := 0
+	for i < len(actions) {
+		tid := actions[i].Tunnel
+		j := i
+		for j < len(actions) && actions[j].Tunnel == tid {
+			j++
+		}
+		groups = append(groups, actions[i:j])
+		i = j
+	}
+	return groups
+}
+
+// executeActionsGrouped runs a multi-tunnel action list with per-tunnel
+// serialization. Each tunnel's contiguous group runs under that tunnel's
+// per-tunnel lock, acquired and released per group — never holding two
+// tunnel locks at once, so there is no lock-ordering deadlock against
+// concurrent single-tunnel hook events. Tunnel-less groups (Tunnel=="")
+// run unlocked.
+func (o *Orchestrator) executeActionsGrouped(ctx context.Context, actions []Action) error {
+	var firstErr error
+	for _, group := range groupContiguousByTunnel(actions) {
+		if err := o.executeGroup(ctx, group); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// executeGroup runs one same-tunnel action group. The per-tunnel lock is
+// released via defer (iteration-scoped here, matching the single-tunnel
+// path in HandleEvent) so a panic in executeActions cannot leak the lock.
+func (o *Orchestrator) executeGroup(ctx context.Context, group []Action) error {
+	tid := group[0].Tunnel
+	if tid == "" {
+		return o.executeActions(ctx, group)
+	}
+	o.lockTunnel(tid)
+	defer o.unlockTunnel(tid)
+	return o.executeActions(ctx, group)
 }
 
 // executeOne is implemented in execute.go.
