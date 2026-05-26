@@ -44,11 +44,14 @@
 	function splitEndpoint(endpoint: string): { host: string; port?: string } {
 		const trimmed = endpoint.trim();
 		if (!trimmed || trimmed === '-') return { host: '-' };
-		const m = /^(.*):(\d+)$/.exec(trimmed);
-		if (!m) return { host: trimmed };
-		const host = m[1];
-		const port = m[2];
-		if (!host) return { host: trimmed };
+		const bracketMatch = /^(\[[^\]]+\]):(\d+)$/.exec(trimmed);
+		if (bracketMatch) return { host: bracketMatch[1], port: `:${bracketMatch[2]}` };
+		const lastColon = trimmed.lastIndexOf(':');
+		if (lastColon <= 0) return { host: trimmed };
+		const host = trimmed.slice(0, lastColon);
+		const port = trimmed.slice(lastColon + 1);
+		if (!/^\d+$/.test(port)) return { host: trimmed };
+		if (host.includes(':')) return { host: trimmed };
 		return { host, port: `:${port}` };
 	}
 
@@ -212,10 +215,12 @@
 	}
 	.managed-peer-table th {
 		text-align: center;
-		color: var(--text-muted);
+		background: color-mix(in srgb, var(--accent) 16%, transparent);
+		color: var(--accent);
 		font-weight: 600;
-		padding: 0.5rem;
-		border-bottom: 1px solid var(--border);
+		padding: 0.65rem 0.75rem;
+		line-height: 1.2;
+		border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 		white-space: nowrap;
 	}
 	.managed-peer-table td {
